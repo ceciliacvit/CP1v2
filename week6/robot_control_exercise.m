@@ -33,11 +33,11 @@ try
 
     %% PRM path waypoints
     path = [
-        0.1000    0.1000
-        0.2899    0.1623
-        0.5538    1.1705
-        1.5904    1.5583
-        1.5000    1.5000
+        0         0
+        0.1786    1.2714
+        0.7881    3.7563
+        2.7344    1.7019
+        2.5000    1.5000
     ];
 
     %%path = [
@@ -68,8 +68,8 @@ try
 
     %% PID gains
     % Heading PID gains
-    Kp_h = 0.9;
-    Ki_h = 0.02;
+    Kp_h = 0.6;
+    Ki_h = 0.0;
     Kd_h = 0.2;
 
     % Distance PID gains
@@ -106,7 +106,7 @@ try
         visualise = updatePositionDesired(visualise, position_desired);
 
         %% Get the robot's current position and heading
-        position = [pose.position.x pose.position.y];
+        position = [pose.position.x pose.position.y]
 
         qx = pose.orientation.x;
         qy = pose.orientation.y;
@@ -178,12 +178,12 @@ try
         distanceErrorPrev = distanceError;
 
         %% Reduce forward motion if heading is too far off
-        if abs(headingError) > 0.4
+        if abs(headingError) > 0.2
             linearVelocity = linearVelocity * max(0, cos(headingError));
         end
 
         %% Reduce speed near waypoint for smoother turns
-        if distanceToTarget < 0.15
+        if distanceToTarget < 0.05
             linearVelocity = 0.5 * linearVelocity;
         end
 
