@@ -25,7 +25,7 @@ simplegrid = binaryOccupancyMap(map_width, map_height, 'grid', res=res);
 %j = 10;
 %simplegrid.setOccupancy([i j], ones(3,33), 'grid');
 
-i = 20;
+i = 40;
 j = 10;
 simplegrid.setOccupancy([i j], ones(33,3), 'grid')
 
