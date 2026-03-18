@@ -188,9 +188,9 @@ try
         end
 
         %% Reduce speed near waypoint for smoother turns
-        if distanceToTarget < 0.05
-            linearVelocity = 0.5 * linearVelocity;
-        end
+        %if distanceToTarget < 0.05
+        %    linearVelocity = 0.5 * linearVelocity;
+        %end
 
         %% Move to next waypoint or stop at final goal
         if distanceToTarget < waypoint_tolerance
