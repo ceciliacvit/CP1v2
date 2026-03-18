@@ -34,10 +34,12 @@ try
     %% PRM path waypoints
     path = [
          0         0
-    0.1786    1.2714
-    1.9611    1.2554
-    1.9078    0.2698
-    1.5000    0.5000
+    0.2899    0.1623
+    1.0657    0.4632
+    1.2040    0.9785
+    1.3110    1.2321
+    1.8116    1.3594
+    1.8000    1.3000
     ];
 
     %%path = [
@@ -103,7 +105,7 @@ try
         %% Read scan values
         ranges = double(scan.ranges); %#ok<NASGU>
         angle_min = double(scan.angle_min); %#ok<NASGU>
-        angle_increment = double(scan.angle_increment); %#ok<NASGU>
+        angle_increment = double(scan.angle_increment); 
 
         %% Visualise desired position
         visualise = updatePositionDesired(visualise, position_desired);

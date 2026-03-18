@@ -6,8 +6,8 @@ function map = createMap(cellsize)
 % Create a simple occupancy map based on the cell size
 
 % Map size in meters
-map_width_m = 5;
-map_height_m = 5;
+map_width_m = 2;
+map_height_m = 2;
 robot_size_side = 0.07; % meters
 
 % Resolution in cells per meter
@@ -25,9 +25,13 @@ simplegrid = binaryOccupancyMap(map_width, map_height, 'grid', res=res);
 %j = 10;
 %simplegrid.setOccupancy([i j], ones(3,33), 'grid');
 
-i = 40;
-j = 10;
-simplegrid.setOccupancy([i j], ones(33,3), 'grid')
+i = 0;
+j = 5;
+simplegrid.setOccupancy([i j], ones(15,5), 'grid')
+
+i = 10;
+j = 15;
+simplegrid.setOccupancy([i j], ones(15,5), 'grid')
 
 % Inflate obstacles to account for robot size
 simplegrid.inflate(robot_size_side);
