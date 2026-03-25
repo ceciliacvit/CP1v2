@@ -70,6 +70,12 @@ try
     fig3 = figure;
     ax3 = axes(fig3);
 
+    fig4 = figure;
+    ax4 = axes(fig4);
+    
+    odomTrail = [];
+    drTrail = [];
+
     %% PID gains
     % Heading PID gains
     Kp_h = 0.6;
@@ -115,7 +121,7 @@ try
 
         linear_accel.z = linear_accel.z - 9.8200;
 
-        cutoff = 2;
+        cutoff = 0.5;
         %cutoff to combat position drift
         if(abs(linear_accel.x) < cutoff)
             linear_accel.x = 0;
@@ -149,16 +155,20 @@ try
 
        
 
-        dr_vel = dr_vel + Acc_world * dt
-        dr_pos = dr_pos + dr_vel * dt
+        dr_vel = dr_vel + Acc_world * dt;
+        dr_vel = dr_vel * 0.98;
+        dr_pos = dr_pos + dr_vel * dt;
         
-
+        %visualise = updateDeadReckoning(visualise, dr_pos(1:2));
 
         %% Visualise desired position
         visualise = updatePositionDesired(visualise, position_desired);
 
+        %plot(ax_compare, position(1), position(2), 'bo', dr_pos(1), dr_pos(2), 'rx');
+        %legend('Odometry', 'Dead Reckoning');
+
         %% Get the robot's current position and heading
-        position = [pose.position.x pose.position.y]
+        position = [pose.position.x pose.position.y];
 
         qx = pose.orientation.x;
         qy = pose.orientation.y;
@@ -172,6 +182,14 @@ try
         cart = rosReadCartesian(scan);  % Convert scan to Cartesian coordinates
         cart = cart * [cos(heading), -sin(heading); sin(heading), cos(heading)]' + position;
         visualise = updateScan(visualise, cart);
+
+        %% Compare dead reckoning vs odometry
+        odomTrail(end+1,:) = position;
+        drTrail(end+1,:) = dr_pos(1:2);
+        plot(ax4, odomTrail(:,1), odomTrail(:,2), 'b-', drTrail(:,1), drTrail(:,2), 'r--', 'LineWidth', 1.5);
+        xlabel(ax4, 'X [m]'); ylabel(ax4, 'Y [m]');
+        legend(ax4, 'Odometry', 'Dead Reckoning');
+        grid(ax4, 'on');
 
         %% Desired heading and distance to current waypoint
         delta = position_desired - position;
