@@ -4,10 +4,11 @@ clc
 close all
 
 %% Declare global variables for robot pose and laser scan data
-global pose scan imu
+global pose scan imu tf
 pose = [];
 scan = [];
 imu = [];
+tf = [];
 
 %% Set the ROS domain ID for communication
 setenv('ROS_DOMAIN_ID', '30');
@@ -21,6 +22,7 @@ controlNode = ros2node('/base_station');
 %% Define subscribers
 odomSub = ros2subscriber(controlNode, '/odom', @odomCallback); % odometry topic
 imuSub = ros2subscriber(controlNode,'/imu',@imuCallback);
+tfSub = ros2subscriber(controlNode,'/tf',@tfCallback);
 scanSub = ros2subscriber(controlNode, '/scan', @scanCallback, 'Reliability', 'besteffort'); % laser scan topic
 
 % Pause to allow ROS subscriptions to initialize
@@ -34,7 +36,8 @@ try
     visualise = TurtleBotVisualise();
 
 
-    path = [0 0];
+    path = [pose.position.x ... 
+            pose.position.y];
     %% PRM path waypoints
     % path = [
     %     0         0
@@ -115,7 +118,7 @@ try
 
         linear_accel.z = linear_accel.z - 9.8200;
 
-        cutoff = 2;
+        cutoff = 0.2;
         %cutoff to combat position drift
         if(abs(linear_accel.x) < cutoff)
             linear_accel.x = 0;
@@ -152,7 +155,20 @@ try
         dr_vel = dr_vel + Acc_world * dt
         dr_pos = dr_pos + dr_vel * dt
         
+        t = tf.transforms(1);
 
+        tf_pos = [
+            t.transform.translation.x
+            t.transform.translation.y
+            t.transform.translation.z
+        ]
+        
+        tf_rot = [
+            t.transform.rotation.w
+            t.transform.rotation.x
+            t.transform.rotation.y
+            t.transform.rotation.z
+        ]
 
         %% Visualise desired position
         visualise = updatePositionDesired(visualise, position_desired);
@@ -299,4 +315,12 @@ function scanCallback(message)
 
     % Save the laser scan message
     scan = message;
+end
+
+function tfCallback(message)
+    % Use global variable to store laser scan data
+    global tf
+
+    % Save the laser scan message
+    tf = message;
 end
