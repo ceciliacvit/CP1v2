@@ -102,6 +102,14 @@ try
 
     tPrev = tic;
 
+    %% creating SLAM object
+
+    cellsize = 0.1;
+    res = 1 / cellsize;
+    slamObj = lidarSLAM(res,8);
+
+
+
     %% Infinite loop for real-time visualization, until the figure is closed
     while true
         %% Wait until pose and scan have arrived
@@ -117,6 +125,8 @@ try
         ranges = double(scan.ranges); %#ok<NASGU>
         angle_min = double(scan.angle_min); %#ok<NASGU>
         angle_increment = double(scan.angle_increment); %#ok<NASGU>
+
+        
 
         linear_accel = imu.linear_acceleration;
 
@@ -156,8 +166,6 @@ try
 
         Acc_world = quatrotate(Orient,Acc_body);
 
-       
-
         dr_vel = dr_vel + Acc_world * dt;
         dr_vel = dr_vel * 0.98;
         dr_pos = dr_pos + dr_vel * dt;
@@ -178,6 +186,24 @@ try
         ]
         %visualise = updateDeadReckoning(visualise, dr_pos(1:2));
 
+
+        %% setup slam scan.
+        angles = angle_min + (0:length(ranges)-1) * angle_increment;
+
+        ScanLidar = lidarScan(ranges, angles);
+
+        qw = tf_rot(1);
+        qx = tf_rot(2);
+        qy = tf_rot(3);
+        qz = tf_rot(4);
+        yaw = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
+
+        relPoseEst = [tf_pos(1),tf_pos(2),yaw];
+
+        [isScanAccepted, loopClosureInfo, optimizationInfo] = addScan(slamObj, ScanLidar);
+
+        [scans,poses] = scansAndPoses(slamObj);
+
         %% Visualise desired position
         visualise = updatePositionDesired(visualise, position_desired);
 
@@ -185,15 +211,21 @@ try
         %legend('Odometry', 'Dead Reckoning');
 
         %% Get the robot's current position and heading
-        position = [pose.position.x pose.position.y];
+        position = [poses(1), poses(2)];
 
         qx = pose.orientation.x;
         qy = pose.orientation.y;
         qz = pose.orientation.z;
         qw = pose.orientation.w;
 
-        heading = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
+        %heading = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
+        heading = poses(3);
         visualise = updatePose(visualise, position, heading);
+
+
+
+
+
 
         %% Process and plot laser scan data
         cart = rosReadCartesian(scan);  % Convert scan to Cartesian coordinates
@@ -271,7 +303,7 @@ try
 
         %% Move to next waypoint or stop at final goal
         if distanceToTarget < waypoint_tolerance
-            if waypoint_idx < size(path, 1)
+            if waypoint_idx < 0
                 waypoint_idx = waypoint_idx + 1;
                 position_desired = path(waypoint_idx, :);
             else
