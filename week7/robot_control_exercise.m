@@ -35,7 +35,6 @@ try
     %% Create figure for TurtleBot's data
     visualise = TurtleBotVisualise();
 
-
     path = [pose.position.x ... 
             pose.position.y];
     %% PRM path waypoints
@@ -66,19 +65,29 @@ try
     distanceData = [];
 
     t0 = tic;
-
-    fig2 = figure;
-    ax2 = axes(fig2);
-
-    fig3 = figure;
-    ax3 = axes(fig3);
+    
+    % fig2 = figure;
+    % ax2 = axes(fig2);
+    % 
+    % fig3 = figure;
+    % ax3 = axes(fig3);
 
     fig4 = figure;
     ax4 = axes(fig4);
     
+    fig5 = figure;
+    ax5 = axes(fig5);
+
+    fig6 = figure;
+    ax6 = axes(fig6);
+
+    %% ADDED: Occupancy map figure
+    figMap = figure;
+    axMap = axes(figMap);
+
     odomTrail = [];
     drTrail = [];
-
+    slamTrail = [];
     %% PID gains
     % Heading PID gains
     Kp_h = 0.6;
@@ -108,8 +117,6 @@ try
     res = 1 / cellsize;
     slamObj = lidarSLAM(res,8);
 
-
-
     %% Infinite loop for real-time visualization, until the figure is closed
     while true
         %% Wait until pose and scan have arrived
@@ -126,15 +133,13 @@ try
         angle_min = double(scan.angle_min); %#ok<NASGU>
         angle_increment = double(scan.angle_increment); %#ok<NASGU>
 
-        
-
         linear_accel = imu.linear_acceleration;
 
         orient = imu.orientation;
 
         linear_accel.z = linear_accel.z - 9.8200;
 
-        cutoff = 0.2;
+        cutoff = 0.0;
         %cutoff to combat position drift
         if(abs(linear_accel.x) < cutoff)
             linear_accel.x = 0;
@@ -168,22 +173,29 @@ try
 
         dr_vel = dr_vel + Acc_world * dt;
         dr_vel = dr_vel * 0.98;
-        dr_pos = dr_pos + dr_vel * dt;
+        dr_pos = dr_pos + dr_vel * dt
         
+        qw = Orient(1);
+        qx = Orient(2);
+        qy = Orient(3);
+        qz = Orient(4);
+
+
+        dr_angle = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
+
         t = tf.transforms(1);
 
         tf_pos = [
             t.transform.translation.x
             t.transform.translation.y
-            t.transform.translation.z
-        ]
-        
+        ];
+
         tf_rot = [
             t.transform.rotation.w
             t.transform.rotation.x
             t.transform.rotation.y
             t.transform.rotation.z
-        ]
+        ];
         %visualise = updateDeadReckoning(visualise, dr_pos(1:2));
 
 
@@ -192,26 +204,33 @@ try
 
         ScanLidar = lidarScan(ranges, angles);
 
+        %rotation 
         qw = tf_rot(1);
         qx = tf_rot(2);
         qy = tf_rot(3);
         qz = tf_rot(4);
-        yaw = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
 
-        relPoseEst = [tf_pos(1),tf_pos(2),yaw];
 
-        [isScanAccepted, loopClosureInfo, optimizationInfo] = addScan(slamObj, ScanLidar);
+        tf_angle = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
+
+        odom_pos = [tf_pos(1),tf_pos(2)];
+        relPoseEst = [tf_pos(1),tf_pos(2),tf_angle];
+
+        [isScanAccepted, loopClosureInfo, optimizationInfo] = addScan(slamObj, ScanLidar, relPoseEst);
 
         [scans,poses] = scansAndPoses(slamObj);
+
+        %% ADDED: Build occupancy map every 10 scans
+        if mod(numel(scans),10) == 0
+            occMap = buildMap(scans, poses, res, 8);
+            show(occMap,'Parent',axMap);
+            title(axMap,'Occupancy Map');
+        end
 
         %% Visualise desired position
         visualise = updatePositionDesired(visualise, position_desired);
 
-        %plot(ax_compare, position(1), position(2), 'bo', dr_pos(1), dr_pos(2), 'rx');
-        %legend('Odometry', 'Dead Reckoning');
-
-        %% Get the robot's current position and heading
-        position = [poses(1), poses(2)];
+        slam_pos = [poses(1), poses(2)];
 
         qx = pose.orientation.x;
         qy = pose.orientation.y;
@@ -219,29 +238,33 @@ try
         qw = pose.orientation.w;
 
         %heading = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
-        heading = poses(3);
-        visualise = updatePose(visualise, position, heading);
-
-
-
-
+        slam_angle = poses(3);
+        visualise = updatePose(visualise, slam_pos, slam_angle);
 
 
         %% Process and plot laser scan data
         cart = rosReadCartesian(scan);  % Convert scan to Cartesian coordinates
-        cart = cart * [cos(heading), -sin(heading); sin(heading), cos(heading)]' + position;
+        cart = cart * [cos(slam_angle), -sin(slam_angle); sin(slam_angle), cos(slam_angle)]' + slam_pos;
+        
         visualise = updateScan(visualise, cart);
 
-        %% Compare dead reckoning vs odometry
-        odomTrail(end+1,:) = position;
+        %% plot dead reckoning
         drTrail(end+1,:) = dr_pos(1:2);
-        plot(ax4, odomTrail(:,1), odomTrail(:,2), 'b-', drTrail(:,1), drTrail(:,2), 'r--', 'LineWidth', 1.5);
+        plot(ax4, drTrail(:,1), drTrail(:,2), 'r--', 'LineWidth', 1.5);
         xlabel(ax4, 'X [m]'); ylabel(ax4, 'Y [m]');
-        legend(ax4, 'Odometry', 'Dead Reckoning');
+        legend(ax4, 'Dead Reckoning');
         grid(ax4, 'on');
 
+        %% Compare odom (tf) with slam
+        odomTrail(end+1,:) = odom_pos;
+        slamTrail(end+1,:) = slam_pos;
+        plot(ax5, odomTrail(:,1), odomTrail(:,2), 'b--', slamTrail(:,1), slamTrail(:,2), 'r--', 'LineWidth', 1.5);
+        xlabel(ax5, 'X [m]'); ylabel(ax5, 'Y [m]');
+        legend(ax5, 'Odometry', 'Slam');
+        grid(ax5, 'on');
+
         %% Desired heading and distance to current waypoint
-        delta = position_desired - position;
+        delta = position_desired - slam_pos;
         desiredHeading = atan2(delta(2), delta(1));
         distanceToTarget = norm(delta);
 
@@ -249,28 +272,28 @@ try
         t = toc(t0);
 
         timeData(end+1) = t;
-        headingData(end+1) = heading;
+        headingData(end+1) = slam_angle;
         desiredHeadingData(end+1) = desiredHeading;
         distanceData(end+1) = distanceToTarget;
 
-        plot(ax2, timeData, headingData, 'b', timeData, desiredHeadingData, 'r--', 'LineWidth', 1.5);
-        xlabel(ax2, 'Time [s]');
-        ylabel(ax2, 'Heading [rad]');
-        legend(ax2, 'Actual heading', 'Desired heading');
-        grid(ax2, 'on');
-
-        plot(ax3, timeData, distanceData, 'k', 'LineWidth', 1.5);
-        xlabel(ax3, 'Time [s]');
-        ylabel(ax3, 'Distance to current waypoint [m]');
-        legend(ax3, 'Distance to waypoint');
-        grid(ax3, 'on');
+        % plot(ax2, timeData, headingData, 'b', timeData, desiredHeadingData, 'r--', 'LineWidth', 1.5);
+        % xlabel(ax2, 'Time [s]');
+        % ylabel(ax2, 'Heading [rad]');
+        % legend(ax2, 'Actual heading', 'Desired heading');
+        % grid(ax2, 'on');
+        % 
+        % plot(ax3, timeData, distanceData, 'k', 'LineWidth', 1.5);
+        % xlabel(ax3, 'Time [s]');
+        % ylabel(ax3, 'Distance to current waypoint [m]');
+        % legend(ax3, 'Distance to waypoint');
+        % grid(ax3, 'on');
 
         drawnow limitrate;
 
         %% PID controller for heading
        
 
-        headingError = atan2(sin(desiredHeading - heading), cos(desiredHeading - heading));
+        headingError = atan2(sin(desiredHeading - slam_angle), cos(desiredHeading - slam_angle));
         headingErrorInt = headingErrorInt + headingError * dt;
         headingErrorDer = (headingError - headingErrorPrev) / dt;
 
@@ -328,6 +351,7 @@ try
         end
     end
 catch ME
+
     % Stop the robot
     cmdMsg = ros2message('geometry_msgs/Twist');
     cmdMsg.Linear.X = 0;
@@ -345,33 +369,21 @@ end
 
 %% Callback functions
 function odomCallback(message)
-    % Use global variable to store the robot's position and orientation
     global pose
-
-    % Extract position and orientation data from the ROS message
     pose = message.pose.pose;
 end
 
 function imuCallback(message)
-    % Use global variable to store laser scan data
     global imu
-
-    % Save the laser scan message
     imu = message;
 end
 
 function scanCallback(message)
-    % Use global variable to store laser scan data
     global scan
-
-    % Save the laser scan message
     scan = message;
 end
 
 function tfCallback(message)
-    % Use global variable to store laser scan data
     global tf
-
-    % Save the laser scan message
     tf = message;
 end

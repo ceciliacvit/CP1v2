@@ -47,7 +47,7 @@ try
     %% Infinite loop for real-time visualization, until the figure is closed
     while true
         %% Visialise desired position
-        visualise = updatePositionDesired(visualise, positionDesired);
+        % visualise = updatePositionDesired(visualise, positionDesired);
 
         %% Get the robot's current position and heading
         position = [pose.position.x; pose.position.y];
@@ -60,15 +60,31 @@ try
         heading = heading - headingOffset; % Offset heading
 
         %% Visualise the robot
-        visualise = updatePose(visualise, position, heading);
+        % visualise = updatePose(visualise, position, heading);
     
         %% Process and plot laser scan data
         cart = rosReadCartesian(scan);  % Convert scan to Cartesian coordinates
         cart = cart * [cos(heading), -sin(heading); sin(heading), cos(heading)]' + position'; % Transform based on robot position and heading
-        visualise = updateScan(visualise, cart);
+        % visualise = updateScan(visualise, cart);
 
         %% Visualise image
-        visualise = updateImage(visualise, image);
+        
+
+        image_r = image(:, :, 1);
+        image_g = image(:, :, 2);
+        image_b = image(:, :, 3);
+        [h,w,d] = size(image);
+
+        circle = zeros(h,w,d);
+
+        
+        cutoff = 0;
+        
+        mask = image(:,:,3) > cutoff & image(:,:,2) > cutoff
+
+        circle(~mask) = image(~mask);
+
+        visualise = updateImage(visualise, flipud(circle));
 
         %% PID controller for heading
         angularVelocity = 0.0;
