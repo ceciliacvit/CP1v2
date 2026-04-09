@@ -67,24 +67,77 @@ try
         cart = cart * [cos(heading), -sin(heading); sin(heading), cos(heading)]' + position'; % Transform based on robot position and heading
         % visualise = updateScan(visualise, cart);
 
-        %% Visualise image
+        %% Step 4: Color segmentation using HSV
+        % Convert the RGB image to HSV color space
+        % HSV makes it easier to detect colors based on hue
+        hsv_image = rgb2hsv(image);
         
-
-        image_r = image(:, :, 1);
-        image_g = image(:, :, 2);
-        image_b = image(:, :, 3);
-        [h,w,d] = size(image);
-
-        circle = zeros(h,w,d);
-
+        % Split into separate channels
+        hue = hsv_image(:,:,1);        % color type (0-1)
+        saturation = hsv_image(:,:,2); % how vivid the color is (0-1)
+        brightness = hsv_image(:,:,3); % how bright the pixel is (0-1)
         
-        cutoff = 0;
+        % Define hue ranges for each color we want to detect
+        % Red wraps around 0/1 in hue space, so we check both ends
+        is_red   = hue < 0.05 | hue > 0.95;
+        is_green = hue > 0.25 & hue < 0.45;
+        is_blue  = hue > 0.55 & hue < 0.70;
         
-        mask = image(:,:,3) > cutoff & image(:,:,2) > cutoff
+        % Create a binary mask: pixel is 1 if it matches any color
+        % Also filter out dull/dark pixels using saturation and brightness
+        mask = (is_red | is_green | is_blue) & saturation > 0.3 & brightness > 0.3;
+        
+        %% Step 5: Clean up the mask using morphological operators
+        mask = imopen(mask, strel('disk', 3));   % remove small noise spots
+        mask = imclose(mask, strel('disk', 50)); % close small gaps
+        mask = imfill(mask, 'holes');            % fill holes inside the shape
+        
+        %% Step 6: Detect circles in the mask, [20 600] is min and max size of circle
+        [centers, radii] = imfindcircles(mask, [20 600], 'Sensitivity', 0.99, 'ObjectPolarity', 'bright');
+        
+        %% Step 7: Get the diameter and identify the color
+        [rows, cols, channels] = size(image);
+        
+        if ~isempty(radii)
+            % Calculate diameter from radius
+            diameter = 2 * radii(1);
+        
+            % Figure out which color the circle is by checking
+            % how many pixels of each color are inside the detected circle
+            [xx, yy] = meshgrid(1:cols, 1:rows);
+            inside_circle = (xx - centers(1,1)).^2 + (yy - centers(1,2)).^2 < radii(1)^2;
+        
+            red_count   = sum(is_red(:)   & inside_circle(:));
+            green_count = sum(is_green(:) & inside_circle(:));
+            blue_count  = sum(is_blue(:)  & inside_circle(:));
+        
+            % Pick whichever color has the most pixels
+            [~, color_index] = max([red_count, green_count, blue_count]);
+            color_names = {'Red', 'Green', 'Blue'};
+            %fprintf('Detected: %s circle, diameter: %.1f pixels\n', color_names{color_index}, diameter);
+        
+            % Exercise 2
+            f = 1266;
+            H = 0.10;
+            D_estimated = f * H / diameter;
+            fprintf('Estimated distance: %.2f m\n', D_estimated);
 
-        circle(~mask) = image(~mask);
+            % Draw a green circle around the detected circle
+            annotated = insertShape(image, 'Circle', [centers(1,1), centers(1,2), radii(1)], 'Color', 'green', 'LineWidth', 5);
+        else
+            % No circle found, just show the raw image
+            annotated = image;
+        end
+        
+        %% Visualise the results side by side
+        % Create the filtered image by applying the mask to all 3 channels
+        mask3 = repmat(mask, [1, 1, 3]);
+        filtered_image = zeros(rows, cols, channels, 'uint8');
+        filtered_image(mask3) = image(mask3);
+        
+        % Show annotated image on the left, filtered on the right
+        visualise = updateImage(visualise, rot90([annotated, filtered_image], 2));
 
-        visualise = updateImage(visualise, flipud(circle));
 
         %% PID controller for heading
         angularVelocity = 0.0;
