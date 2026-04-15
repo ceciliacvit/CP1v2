@@ -4,10 +4,9 @@ clc
 close all
 
 %% Declare global variables for robot pose and laser scan data
-global pose scan imu tf
+global pose scan tf
 pose = [];
 scan = [];
-imu = [];
 tf = [];
 
 %% Set the ROS domain ID for communication
@@ -21,7 +20,6 @@ controlNode = ros2node('/base_station');
 
 %% Define subscribers
 odomSub = ros2subscriber(controlNode, '/odom', @odomCallback); % odometry topic
-imuSub = ros2subscriber(controlNode,'/imu',@imuCallback);
 tfSub = ros2subscriber(controlNode,'/tf',@tfCallback);
 scanSub = ros2subscriber(controlNode, '/scan', @scanCallback, 'Reliability', 'besteffort'); % laser scan topic
 
@@ -35,28 +33,11 @@ try
     %% Create figure for TurtleBot's data
     visualise = TurtleBotVisualise();
 
-    path = [pose.position.x ... 
-            pose.position.y];
-    %% PRM path waypoints
-    % path = [
-    %     0         0
-    %     0.1786    1.2714
-    %     0.7881    3.7563
-    %     2.7344    1.7019
-    %     2.5000    1.5000
-    % ];
-
-    %%path = [
-    %%    0.1000    0.1000
-    %%    0.1623    0.2899
-    %%    1.1705    0.5538
-    %%    1.5583    1.5904
-    %%    1.5000    1.5000
-    %%];
+    
 
     waypoint_idx = 1;
     waypoint_tolerance = 0.15;  % meters
-    position_desired = path(waypoint_idx, :);
+   
 
     %% Optional live plots
     timeData = [];
@@ -65,28 +46,12 @@ try
     distanceData = [];
 
     t0 = tic;
-    
-    % fig2 = figure;
-    % ax2 = axes(fig2);
-    % 
-    % fig3 = figure;
-    % ax3 = axes(fig3);
-
-    fig4 = figure;
-    ax4 = axes(fig4);
-    
-    fig5 = figure;
-    ax5 = axes(fig5);
-
-    fig6 = figure;
-    ax6 = axes(fig6);
 
     %% ADDED: Occupancy map figure
     figMap = figure;
     axMap = axes(figMap);
 
     odomTrail = [];
-    drTrail = [];
     slamTrail = [];
     %% PID gains
     % Heading PID gains
@@ -105,84 +70,41 @@ try
 
     distanceErrorInt = 0;
     distanceErrorPrev = 0;
-
-    dr_vel = [0 0 0];
-    dr_pos = [0 0 0];
-
     tPrev = tic;
 
     %% creating SLAM object
 
-    cellsize = 0.1;
+    cellsize = 0.05;
     res = 1 / cellsize;
     slamObj = lidarSLAM(res,8);
 
     %% Infinite loop for real-time visualization, until the figure is closed
     while true
         %% Wait until pose and scan have arrived
-        if isempty(scan) || isempty(pose) || isempty(imu)
+        if isempty(scan) || isempty(pose)
             pause(0.01)
             continue
         end
 
-        %% Current waypoint from path
-        position_desired = path(waypoint_idx, :);
+        Current_pos = [pose.position.x ... 
+            pose.position.y];
+
+        
+
+
 
         %% Read scan values
-        ranges = double(scan.ranges); %#ok<NASGU>
-        angle_min = double(scan.angle_min); %#ok<NASGU>
-        angle_increment = double(scan.angle_increment); %#ok<NASGU>
+        ranges = double(scan.ranges); 
+        angle_min = double(scan.angle_min);
+        angle_increment = double(scan.angle_increment);
 
-        linear_accel = imu.linear_acceleration;
-
-        orient = imu.orientation;
-
-        linear_accel.z = linear_accel.z - 9.8200;
-
-        cutoff = 0.0;
-        %cutoff to combat position drift
-        if(abs(linear_accel.x) < cutoff)
-            linear_accel.x = 0;
-        end
-        if(abs(linear_accel.y) < cutoff)
-            linear_accel.y = 0;
-        end
-        if(abs(linear_accel.z) < cutoff)
-            linear_accel.z = 0;
-        end
-
-        Orient = [
-            orient.w ...
-            orient.x ...
-            orient.y ...
-            orient.z
-        ];
-        Acc_body = [
-            linear_accel.x ...
-            linear_accel.y ...
-            linear_accel.z 
-        ];
         dt = toc(tPrev);
         tPrev = tic;
 
         if dt <= 0
             dt = 0.01;
         end
-
-        Acc_world = quatrotate(Orient,Acc_body);
-
-        dr_vel = dr_vel + Acc_world * dt;
-        dr_vel = dr_vel * 0.98;
-        dr_pos = dr_pos + dr_vel * dt
-        
-        qw = Orient(1);
-        qx = Orient(2);
-        qy = Orient(3);
-        qz = Orient(4);
-
-
-        dr_angle = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
-
+ 
         t = tf.transforms(1);
 
         tf_pos = [
@@ -196,9 +118,7 @@ try
             t.transform.rotation.y
             t.transform.rotation.z
         ];
-        %visualise = updateDeadReckoning(visualise, dr_pos(1:2));
-
-
+  
         %% setup slam scan.
         angles = angle_min + (0:length(ranges)-1) * angle_increment;
 
@@ -210,7 +130,6 @@ try
         qy = tf_rot(3);
         qz = tf_rot(4);
 
-
         tf_angle = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
 
         odom_pos = [tf_pos(1),tf_pos(2)];
@@ -220,23 +139,45 @@ try
 
         [scans,poses] = scansAndPoses(slamObj);
 
-        %% ADDED: Build occupancy map every 10 scans
+        occMap = buildMap(scans, poses, res, 8);
+        %% ADDED: Build occupancy map every 2 scans
         if mod(numel(scans),2) == 0
-            occMap = buildMap(scans, poses, res, 8);
             show(occMap,'Parent',axMap);
             title(axMap,'Occupancy Map');
         end
 
+        xLimits = occMap.XWorldLimits;
+        yLimits = occMap.YWorldLimits;
+        
+        valid = false;
+        
+        while ~valid
+            end_point = [
+                rand() * diff(xLimits) + xLimits(1), ...
+                rand() * diff(yLimits) + yLimits(1)
+            ];
+        
+            occ = getOccupancy(occMap, end_point);
+        
+            valid = ~isnan(occ) && occ < 0.5;
+        end
+
+        startOcc = getOccupancy(occMap, Current_pos);
+
+        if isnan(startOcc) || startOcc > 0.5
+            continue;
+        end
+                
+        path = createPath(Current_pos,end_point,occMap)
+
+        
+        %% Current waypoint from path
+        position_desired = path(1, :);
+
         %% Visualise desired position
-        visualise = updatePositionDesired(visualise, position_desired);
+        % visualise = updatePositionDesired(visualise, position_desired);
 
         slam_pos = [poses(1), poses(2)];
-
-        qx = pose.orientation.x;
-        qy = pose.orientation.y;
-        qz = pose.orientation.z;
-        qw = pose.orientation.w;
-
         %heading = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
         slam_angle = poses(3);
         visualise = updatePose(visualise, slam_pos, slam_angle);
@@ -247,21 +188,6 @@ try
         cart = cart * [cos(slam_angle), -sin(slam_angle); sin(slam_angle), cos(slam_angle)]' + slam_pos;
         
         visualise = updateScan(visualise, cart);
-
-        %% plot dead reckoning
-        drTrail(end+1,:) = dr_pos(1:2);
-        plot(ax4, drTrail(:,1), drTrail(:,2), 'r--', 'LineWidth', 1.5);
-        xlabel(ax4, 'X [m]'); ylabel(ax4, 'Y [m]');
-        legend(ax4, 'Dead Reckoning');
-        grid(ax4, 'on');
-
-        %% Compare odom (tf) with slam
-        odomTrail(end+1,:) = odom_pos;
-        slamTrail(end+1,:) = slam_pos;
-        plot(ax5, odomTrail(:,1), odomTrail(:,2), 'b--', slamTrail(:,1), slamTrail(:,2), 'r--', 'LineWidth', 1.5);
-        xlabel(ax5, 'X [m]'); ylabel(ax5, 'Y [m]');
-        legend(ax5, 'Odometry', 'Slam');
-        grid(ax5, 'on');
 
         %% Desired heading and distance to current waypoint
         delta = position_desired - slam_pos;
@@ -275,18 +201,6 @@ try
         headingData(end+1) = slam_angle;
         desiredHeadingData(end+1) = desiredHeading;
         distanceData(end+1) = distanceToTarget;
-
-        % plot(ax2, timeData, headingData, 'b', timeData, desiredHeadingData, 'r--', 'LineWidth', 1.5);
-        % xlabel(ax2, 'Time [s]');
-        % ylabel(ax2, 'Heading [rad]');
-        % legend(ax2, 'Actual heading', 'Desired heading');
-        % grid(ax2, 'on');
-        % 
-        % plot(ax3, timeData, distanceData, 'k', 'LineWidth', 1.5);
-        % xlabel(ax3, 'Time [s]');
-        % ylabel(ax3, 'Distance to current waypoint [m]');
-        % legend(ax3, 'Distance to waypoint');
-        % grid(ax3, 'on');
 
         drawnow limitrate;
 
@@ -326,16 +240,27 @@ try
 
         %% Move to next waypoint or stop at final goal
         if distanceToTarget < waypoint_tolerance
-            if waypoint_idx < 0
-                waypoint_idx = waypoint_idx + 1;
-                position_desired = path(waypoint_idx, :);
-            else
-                linearVelocity = 0.0;
-                angularVelocity = 0.0;
+            xLimits = occMap.XWorldLimits;
+            yLimits = occMap.YWorldLimits;
+            
+            valid = false;
+            
+            while ~valid
+                end_point = [
+                    rand() * diff(xLimits) + xLimits(1), ...
+                    rand() * diff(yLimits) + yLimits(1)
+                ];
+            
+                occ = getOccupancy(occMap, end_point);
+            
+                valid = ~isnan(occ) && occ < 0.3;
             end
         end
 
-        %% Publish velocity commands
+            % linearVelocity = 0.0;
+            % angularVelocity = 0.0;
+
+        %% MOVE
         cmdMsg = ros2message('geometry_msgs/Twist');
         cmdMsg.linear.x = clip(linearVelocity, -0.2, 0.2);
         cmdMsg.angular.z = clip(angularVelocity, -2.0, 2.0);
@@ -373,10 +298,6 @@ function odomCallback(message)
     pose = message.pose.pose;
 end
 
-function imuCallback(message)
-    global imu
-    imu = message;
-end
 
 function scanCallback(message)
     global scan
