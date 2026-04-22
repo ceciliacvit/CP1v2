@@ -78,7 +78,7 @@ try
     res = 1 / cellsize;
     slamObj = lidarSLAM(res,8);
     time = 0;
-    path_idx = 1;
+
     at_end = true;
 
     %% Infinite loop for real-time visualization, until the figure is closed
@@ -144,26 +144,14 @@ try
         [scans,poses] = scansAndPoses(slamObj);
 
         occMap = buildMap(scans, poses, res, 8);
-        
         %% ADDED: Build occupancy map every 2 scans
         if mod(numel(scans),2) == 0
-            show(occMap,'Parent',axMap);   % keep this
-        
-            hold(axMap, 'on');             % add this
-        
-            % Plot path if available
-            if exist('path','var') && ~isempty(path)
-                plot(axMap, path(:,1), path(:,2), 'r-', 'LineWidth', 2);
-                plot(axMap, path(:,1), path(:,2), 'bo', 'MarkerSize', 4, 'MarkerFaceColor', 'b');
-            end
-        
-            hold(axMap, 'off');            % optional but clean
-        
-            title(axMap,'Occupancy Map with Path');
+            show(occMap,'Parent',axMap);
+            title(axMap,'Occupancy Map');
         end
 
         if (at_end && time > 5)
-            at_end = false;
+            at_end = true;
             xLimits = occMap.XWorldLimits;
             yLimits = occMap.YWorldLimits;
             
@@ -186,14 +174,18 @@ try
                 continue;
             end
                     
-            % path = createPath(Current_pos,end_point,occMap);
+            if ()
+                path = createPath(Current_pos,end_point,occMap);
     
-            path = Current_pos;
-
-            disp("time to move")
-            position_desired = path(1, :);
+                path
+    
+                disp("time to move")
+                position_desired = path(1, :);
+            end 
         elseif (at_end)
-            continue
+            path = [pose.position.x ... 
+            pose.position.y];
+            position_desired = path;
         end
 
         
@@ -214,8 +206,6 @@ try
         cart = cart * [cos(slam_angle), -sin(slam_angle); sin(slam_angle), cos(slam_angle)]' + slam_pos;
         
         visualise = updateScan(visualise, cart);
-        
-        position_desired = slam_pos;
 
         %% Desired heading and distance to current waypoint
         delta = position_desired - slam_pos;
@@ -268,12 +258,11 @@ try
 
         %% Move to next waypoint or stop at final goal
         if distanceToTarget < waypoint_tolerance
-            path_idx = path_idx + 1;
-            if (path_idx < size(path,1))
-                position_desired = path(path_idx,:);
-            else
+            xLimits = occMap.XWorldLimits;
+            yLimits = occMap.YWorldLimits;
+            
+            valid = false;
             at_end = true;
-            end
         end
 
             % linearVelocity = 0.0;
