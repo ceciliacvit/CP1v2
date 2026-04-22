@@ -139,14 +139,14 @@ try
         odom_pos = [tf_pos(1),tf_pos(2)];
         relPoseEst = [tf_pos(1),tf_pos(2),tf_angle];
 
-        [isScanAccepted, loopClosureInfo, optimizationInfo] = addScan(slamObj, ScanLidar, relPoseEst);
+        addScan(slamObj, ScanLidar);
 
         [scans,poses] = scansAndPoses(slamObj);
 
         occMap = buildMap(scans, poses, res, 8);
         
         %% ADDED: Build occupancy map every 2 scans
-        if mod(numel(scans),2) == 0
+        if mod(numel(scans),10) == 0
             show(occMap,'Parent',axMap);   % keep this
         
             hold(axMap, 'on');             % add this
@@ -162,7 +162,7 @@ try
             title(axMap,'Occupancy Map with Path');
         end
 
-        if (at_end && time > 5)
+        if (at_end == true && time > 5)
             at_end = false;
             xLimits = occMap.XWorldLimits;
             yLimits = occMap.YWorldLimits;
@@ -185,11 +185,10 @@ try
             if isnan(startOcc) || startOcc > 0.1
                 continue;
             end
-                    
-            % path = createPath(Current_pos,end_point,occMap);
-    
-            path = Current_pos;
-
+            path = [];
+            while (size(path) < 1)
+                path = createPath(Current_pos,end_point,occMap);
+            end
             disp("time to move")
             position_desired = path(1, :);
         elseif (at_end)
@@ -214,8 +213,6 @@ try
         cart = cart * [cos(slam_angle), -sin(slam_angle); sin(slam_angle), cos(slam_angle)]' + slam_pos;
         
         visualise = updateScan(visualise, cart);
-        
-        position_desired = slam_pos;
 
         %% Desired heading and distance to current waypoint
         delta = position_desired - slam_pos;
@@ -269,9 +266,12 @@ try
         %% Move to next waypoint or stop at final goal
         if distanceToTarget < waypoint_tolerance
             path_idx = path_idx + 1;
+            path_idx
+            size(path,1)
             if (path_idx < size(path,1))
                 position_desired = path(path_idx,:);
             else
+            disp("at end")
             at_end = true;
             end
         end
@@ -280,10 +280,12 @@ try
             % angularVelocity = 0.0;
 
         %% MOVE
-        cmdMsg = ros2message('geometry_msgs/Twist');
-        cmdMsg.linear.x = clip(linearVelocity, -0.2, 0.2);
-        cmdMsg.angular.z = clip(angularVelocity, -2.0, 2.0);
-        send(cmdPub, cmdMsg);
+        %% Publish velocity commands
+        % cmdMsg = ros2message('geometry_msgs/Twist');
+        % cmdMsg.linear.x = clip(linearVelocity, -0.2, 0.2);
+        % cmdMsg.angular.z = clip(angularVelocity, -2.0, 2.0);
+        % send(cmdPub, cmdMsg);
+
 
         %% Pause to visualize and delete old plots
         pause(0.01)

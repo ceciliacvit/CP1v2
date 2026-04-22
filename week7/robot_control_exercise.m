@@ -173,7 +173,7 @@ try
 
         dr_vel = dr_vel + Acc_world * dt;
         dr_vel = dr_vel * 0.98;
-        dr_pos = dr_pos + dr_vel * dt
+        dr_pos = dr_pos + dr_vel * dt;
         
         qw = Orient(1);
         qx = Orient(2);
@@ -216,12 +216,12 @@ try
         odom_pos = [tf_pos(1),tf_pos(2)];
         relPoseEst = [tf_pos(1),tf_pos(2),tf_angle];
 
-        [isScanAccepted, loopClosureInfo, optimizationInfo] = addScan(slamObj, ScanLidar, relPoseEst);
+        addScan(slamObj, ScanLidar);
 
         [scans,poses] = scansAndPoses(slamObj);
 
         %% ADDED: Build occupancy map every 10 scans
-        if mod(numel(scans),2) == 0
+        if mod(numel(scans),10) == 0
             occMap = buildMap(scans, poses, res, 8);
             show(occMap,'Parent',axMap);
             title(axMap,'Occupancy Map');
@@ -230,7 +230,7 @@ try
         %% Visualise desired position
         visualise = updatePositionDesired(visualise, position_desired);
 
-        slam_pos = [poses(1), poses(2)];
+        slam_pos = poses(end, 1:2);
 
         qx = pose.orientation.x;
         qy = pose.orientation.y;
@@ -238,7 +238,7 @@ try
         qw = pose.orientation.w;
 
         %heading = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
-        slam_angle = poses(3);
+        slam_angle = poses(end, 3);
         visualise = updatePose(visualise, slam_pos, slam_angle);
 
 
@@ -335,11 +335,11 @@ try
             end
         end
 
-        %% Publish velocity commands
-        cmdMsg = ros2message('geometry_msgs/Twist');
-        cmdMsg.linear.x = clip(linearVelocity, -0.2, 0.2);
-        cmdMsg.angular.z = clip(angularVelocity, -2.0, 2.0);
-        send(cmdPub, cmdMsg);
+        % %% Publish velocity commands
+        % cmdMsg = ros2message('geometry_msgs/Twist');
+        % cmdMsg.linear.x = clip(linearVelocity, -0.2, 0.2);
+        % cmdMsg.angular.z = clip(angularVelocity, -2.0, 2.0);
+        % send(cmdPub, cmdMsg);
 
         %% Pause to visualize and delete old plots
         pause(0.01)
