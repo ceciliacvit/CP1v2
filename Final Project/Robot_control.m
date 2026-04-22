@@ -55,12 +55,12 @@ try
     slamTrail = [];
     %% PID gains
     % Heading PID gains
-    Kp_h = 0.6;
+    Kp_h = 1.2;
     Ki_h = 0.0;
-    Kd_h = 0.2;
+    Kd_h = 0.02;
 
     % Distance PID gains
-    Kp_d = 0.2;
+    Kp_d = 0.4;
     Ki_d = 0.0;
     Kd_d = 0.0;
 
@@ -91,10 +91,6 @@ try
 
         Current_pos = [pose.position.x ... 
             pose.position.y];
-
-        
-
-
 
         %% Read scan values
         ranges = double(scan.ranges); 
@@ -128,16 +124,6 @@ try
 
         ScanLidar = lidarScan(ranges, angles);
 
-        %rotation 
-        qw = tf_rot(1);
-        qx = tf_rot(2);
-        qy = tf_rot(3);
-        qz = tf_rot(4);
-
-        tf_angle = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
-
-        odom_pos = [tf_pos(1),tf_pos(2)];
-        relPoseEst = [tf_pos(1),tf_pos(2),tf_angle];
 
         addScan(slamObj, ScanLidar);
 
@@ -145,7 +131,7 @@ try
 
         occMap = buildMap(scans, poses, res, 8);
         
-        %% ADDED: Build occupancy map every 2 scans
+        %% ADDED: Build occupancy map every 10 scans
         if mod(numel(scans),10) == 0
             show(occMap,'Parent',axMap);   % keep this
         
@@ -169,6 +155,7 @@ try
             
             valid = false;
             
+            % create random endpoint
             while ~valid
                 end_point = [
                     rand() * diff(xLimits) + xLimits(1), ...
@@ -179,7 +166,8 @@ try
             
                 valid = ~isnan(occ) && occ < 0.1;
             end
-    
+
+            % creating startpoint
             startOcc = getOccupancy(occMap, Current_pos);
     
             if isnan(startOcc) || startOcc > 0.1
@@ -189,8 +177,11 @@ try
             while (size(path) < 1)
                 path = createPath(Current_pos,end_point,occMap);
             end
-            disp("time to move")
-            position_desired = path(1, :);
+            disp("time to move to ")
+            path(2,:)
+            disp("from")
+            Current_pos
+            position_desired = path(2, :);
         elseif (at_end)
             continue
         end
@@ -202,9 +193,10 @@ try
         %% Visualise desired position
         % visualise = updatePositionDesired(visualise, position_desired);
 
-        slam_pos = [poses(1), poses(2)];
+        slam_pos = [poses(end,1:2)];
         %heading = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
-        slam_angle = poses(3);
+        slam_angle = poses(end,3);
+        slam_angle
         visualise = updatePose(visualise, slam_pos, slam_angle);
 
 
@@ -263,6 +255,8 @@ try
             linearVelocity = 0.5 * linearVelocity;
         end
 
+
+        distanceToTarget
         %% Move to next waypoint or stop at final goal
         if distanceToTarget < waypoint_tolerance
             path_idx = path_idx + 1;
@@ -281,10 +275,10 @@ try
 
         %% MOVE
         %% Publish velocity commands
-        % cmdMsg = ros2message('geometry_msgs/Twist');
-        % cmdMsg.linear.x = clip(linearVelocity, -0.2, 0.2);
-        % cmdMsg.angular.z = clip(angularVelocity, -2.0, 2.0);
-        % send(cmdPub, cmdMsg);
+        cmdMsg = ros2message('geometry_msgs/Twist');
+        cmdMsg.linear.x = clip(linearVelocity, -0.2, 0.2);
+        cmdMsg.angular.z = clip(angularVelocity, -2.0, 2.0);
+        send(cmdPub, cmdMsg);
 
 
         %% Pause to visualize and delete old plots

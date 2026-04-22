@@ -119,6 +119,7 @@ try
         qw = pose.orientation.w;
 
         heading = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy^2 + qz^2));
+        heading
         visualise = updatePose(visualise, position, heading);
 
         %% Process and plot laser scan data
