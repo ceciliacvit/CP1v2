@@ -1,0 +1,62 @@
+function map = explore(scanSub,cmdPub)
+maxLidarRange = 8;
+mapResolution = 20;
+slamAlg = lidarSLAM(mapResolution, maxLidarRange);
+
+slamAlg.LoopClosureThreshold = 210;  
+slamAlg.LoopClosureSearchRadius = 8;
+
+figMap = figure;
+axMap = axes(figMap);
+visualise=TurtleBotVisualise();
+
+target = [0,0];
+i = 0;
+
+while true
+    scan = receive(scanSub);
+    try % catch if scan is empty
+        lidarScan=rosReadLidarScan(scan);
+    catch
+        continue;
+    end    
+
+    addScan(slamAlg, lidarScan);
+    
+    %create map
+    [scans, optimizedPoses]  = scansAndPoses(slamAlg);
+    map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+    
+    position = optimizedPoses(end,1:2);
+
+    %plot map
+    show(map);
+    hold on;
+    visualise = updatePose(visualise,  ...
+       position , optimizedPoses(end,3));
+    hold off;
+    drawnow;
+
+    grid_pos = world2grid(map,position);
+    map.GridSize
+
+    % If close to target find another target
+    if abs(position - target) < 0.5 & i > 100
+        target = findNextTarget(map, grid_pos);
+    end
+    i = i+1;
+    
+end
+
+end
+
+function target = findNextTarget(map, grid_pos)
+    probabilities = map.occupancyMatrix;
+
+    BW = edge(probabilities,'sobel');
+    
+    inflation = map;
+    inflation = inflate(inflation,2);
+    BW
+
+end

@@ -68,7 +68,7 @@ classdef TurtleBotVisualise
             obj.h_axisZ = rectangle('Position', [position(1), position(2), 0, 0] + obj.scale * [-0.01, -0.01, 0.02, 0.02], 'Curvature', [1 1], 'FaceColor', 'b', 'EdgeColor', 'none');
 
             %% Plot past trajectory
-            obj.h_trajectory = plot(obj.positions(:,1), obj.positions(:,2), '--k');
+            obj.h_trajectory = plot(obj.positions(:,1), obj.positions(:,2), '--m');
             obj.positions(end + 1,:) = position;
         end
         function obj = updatePositionDesired(obj, position_desired)
