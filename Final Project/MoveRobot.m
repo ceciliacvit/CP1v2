@@ -1,9 +1,9 @@
-function move(path,percentage_threshold,tolerance)
-arguments
-    path;
-    percentage_threshold = 1;
-    tolerance = 0.15;
-end
+function MoveRobot(path,percentage_threshold,tolerance)
+    arguments
+        path;
+        percentage_threshold = 1;
+        tolerance = 0.15;
+    end
 
 %% for finding position
 maxLidarRange = 8;
@@ -75,8 +75,8 @@ while drive
     desired_heading = atan2(position_delta(2),position_delta(1));
     distance_to_target = norm(position_delta);
 
-    dt = toc(tPrev);
-    tPrev = tic;
+    dt = toc(time_previous);
+    time_previous = tic;
 
     if dt <= 0
         dt = 0.01;
@@ -85,7 +85,7 @@ while drive
     heading_error = atan2(sin(desired_heading-angle),cos(desired_heading-angle));
     headingErrorInt = headingErrorInt + headingError * dt;
     headingErrorDer = (headingError - headingErrorPrev) / dt;
-    headingErrorPrev = headingError;
+    headingErrorPrev = heading_error;
 
     distanceError = distanceToTarget;
     distanceErrorInt = distanceErrorInt + distanceError * dt;
