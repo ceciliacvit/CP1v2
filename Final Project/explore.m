@@ -8,7 +8,9 @@ slamAlg.LoopClosureThreshold = 210;
 slamAlg.LoopClosureSearchRadius = 8;
 
 visualise=TurtleBotVisualise();
-
+figure1 = figure;
+figure2 = figure;
+path=[];
 target = [0,0];
 i = 0;
 initialization=false;
@@ -32,7 +34,7 @@ while true
 
     %plot map
     'plotting hopefully'
-    figure;
+    figure(figure1);
     show(map);
     hold on;
     visualise = updatePose(visualise,  ...
@@ -50,8 +52,9 @@ while true
     % If close to target find another target
     if abs(position - target) < 0.5 & initialization==true
         'finding target'
-        target = findNextTarget(map, grid_pos);
+        target = findNextTarget(map, grid_pos,figure2);
         target=grid2world(map,target);
+        
     end
     
     i = i+1;
@@ -61,7 +64,7 @@ end
 
 end
 
-function target = findNextTarget(map, grid_pos)
+function target = findNextTarget(map, grid_pos,fig)
     probabilities = map.occupancyMatrix;
 
     BW = edge(probabilities,'sobel');
@@ -72,7 +75,7 @@ function target = findNextTarget(map, grid_pos)
    
     BW=BW.* radialLinearMatrix(size(BW),grid_pos,0.2);
     BW=imfilter(BW, ones(3,3)/9, 'replicate');
-    figure;
+    figure(fig);
     imshow(BW)
     drawnow;
     [~,index] = max(BW,[],'all',"linear"); %finds the maximum over all elements of A.

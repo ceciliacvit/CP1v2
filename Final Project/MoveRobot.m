@@ -65,8 +65,10 @@ while drive
 
     addScan(slamAlg, lidarScan);
     
-    [~, optimizedPoses]  = scansAndPoses(slamAlg);
+    [Scans, optimizedPoses]  = scansAndPoses(slamAlg);
+    map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
 
+    
     position = optimizedPoses(end,1:2);
     angle = optimizedPoses(end,3);
 
