@@ -1,4 +1,5 @@
 function map = explore(scanSub,cmdPub)
+'explore started'
 maxLidarRange = 8;
 mapResolution = 20;
 slamAlg = lidarSLAM(mapResolution, maxLidarRange);
@@ -6,15 +7,15 @@ slamAlg = lidarSLAM(mapResolution, maxLidarRange);
 slamAlg.LoopClosureThreshold = 210;  
 slamAlg.LoopClosureSearchRadius = 8;
 
-figMap = figure;
-axMap = axes(figMap);
 visualise=TurtleBotVisualise();
 
 target = [0,0];
 i = 0;
+initialization=false;
 
 while true
     scan = receive(scanSub);
+    'received scan'
     try % catch if scan is empty
         lidarScan=rosReadLidarScan(scan);
     catch
@@ -30,21 +31,31 @@ while true
     position = optimizedPoses(end,1:2);
 
     %plot map
+    'plotting hopefully'
+    figure;
     show(map);
     hold on;
     visualise = updatePose(visualise,  ...
        position , optimizedPoses(end,3));
+    scatter(target(1),target(2));
     hold off;
     drawnow;
 
     grid_pos = world2grid(map,position);
-    map.GridSize
+
+    if i == 20
+        initialization=true;
+    end
 
     % If close to target find another target
-    if abs(position - target) < 0.5 & i > 20
+    if abs(position - target) < 0.5 & initialization==true
+        'finding target'
         target = findNextTarget(map, grid_pos);
+        target=grid2world(map,target);
     end
+    
     i = i+1;
+
     
 end
 
@@ -58,7 +69,25 @@ function target = findNextTarget(map, grid_pos)
     inflation = map;
     inflate(inflation,0.3);
     BW = BW .* (inflation.occupancyMatrix *-1 + 1);
+   
+    BW=BW.* radialLinearMatrix(size(BW),grid_pos,0.2);
+    BW=imfilter(BW, ones(3,3)/9, 'replicate');
+    figure;
+    imshow(BW)
+    drawnow;
+    [~,index] = max(BW,[],'all',"linear"); %finds the maximum over all elements of A.
+    'boo'
+    [X,Y] = ind2sub(size(BW),index);
+    target=[X,Y];
+end
 
-    imshow(BW);
-    %imshow(BW);
+function M = radialLinearMatrix(size, grid_pos,minVal)
+
+[X,Y] = meshgrid(1:size(1),1:size(2));
+
+D = sqrt((Y-grid_pos(2)).^2 + (X-grid_pos(1)).^2);   % distance from chosen point
+Dmax = max(D(:));                  % farthest point in matrix
+
+M = max(minVal, 1 - 0.8*(D/Dmax));
+
 end

@@ -4,10 +4,7 @@ clc
 close all
 
 %% Declare global variables for robot pose and laser scan data
-global pose scan tf
-pose = [];
-scan = [];
-tf = [];
+
 
 %% Set the ROS domain ID for communication
 setenv('ROS_DOMAIN_ID', '30');
