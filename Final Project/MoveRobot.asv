@@ -1,0 +1,99 @@
+function move(path,percentage,tolerance)
+
+%% for finding position
+maxLidarRange = 8;
+mapResolution = 20;
+slamAlg = lidarSLAM(mapResolution, maxLidarRange);
+
+slamAlg.LoopClosureThreshold = 210;  
+slamAlg.LoopClosureSearchRadius = 8;
+
+%% for navigation
+
+time_previous = tic;
+
+
+path_index = 1;
+desired_position = path(path_index,:);
+
+%% PID initialization
+
+headingErrorInt = 0;
+headingErrorPrev = 0;
+
+distanceErrorInt = 0;
+distanceErrorPrev = 0;
+
+% Heading PID gains
+Kp_h = 1.2;
+Ki_h = 0.0;
+Kd_h = 0.02;
+
+% Distance PID gains
+Kp_d = 0.4;
+Ki_d = 0.0;
+Kd_d = 0.0;
+
+while true
+
+    try
+    scanSub = ros2subscriber(controlNode, '/scan', {}, 'Reliability', 'besteffort'); % laser scan topic
+    cmdPub = ros2publisher(controlNode, '/cmd_vel', 'geometry_msgs/Twist');
+    break
+
+    catch
+    end
+    %% find position and angle
+    scan = receive(scanSub);
+    try % catch if scan is empty
+        lidarScan=rosReadLidarScan(scan);
+    catch
+        continue;
+    end    
+
+    addScan(slamAlg, lidarScan);
+    
+    [~, optimizedPoses]  = scansAndPoses(slamAlg);
+
+    position = optimizedPoses(end,1:2);
+    angle = optimizedPoses(end,3);
+
+    %% setup PID
+    position_delta = desired_position - position;
+    desired_heading = atan2(position_delta(2),position_delta(1));
+    distance_to_target = norm(position_delta);
+
+    dt = toc(tPrev);
+    tPrev = tic;
+
+    if dt <= 0
+        dt = 0.01;
+    end
+
+    heading_error = atan2(sin(desired_heading-angle),cos(desired_heading-angle));
+    headingErrorInt = headingErrorInt + headingError * dt;
+    headingErrorDer = (headingError - headingErrorPrev) / dt;
+    headingErrorPrev = headingError;
+
+    distanceError = distanceToTarget;
+    distanceErrorInt = distanceErrorInt + distanceError * dt;
+    distanceErrorDer = (distanceError - distanceErrorPrev) / dt;
+    distanceErrorPrev = distanceError;
+
+    %% PID
+
+    angularVelocity = Kp_h * headingError ...
+                    + Ki_h * headingErrorInt ...
+                    + Kd_h * headingErrorDer;
+
+    linearVelocity = Kp_d * distanceError ...
+                   + Ki_d * distanceErrorInt ...
+                   + Kd_d * distanceErrorDer;
+
+    if distance_to_target < tolerance
+        
+
+end
+
+
+end

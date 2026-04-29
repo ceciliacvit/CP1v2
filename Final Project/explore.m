@@ -60,5 +60,4 @@ function target = findNextTarget(map, grid_pos)
     BW = BW .* (inflation.occupancyMatrix *-1 + 1);
 
     imshow(BW);
-    %imshow(BW);
 end

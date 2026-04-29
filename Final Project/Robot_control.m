@@ -256,7 +256,7 @@ try
         end
 
 
-        distanceToTarget
+
         %% Move to next waypoint or stop at final goal
         if distanceToTarget < waypoint_tolerance
             path_idx = path_idx + 1;
