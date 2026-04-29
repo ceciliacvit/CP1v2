@@ -1,7 +1,9 @@
 function path = createPath(start, goal, map)
 % Find path using PRM
 
-rng(0)
+
+updateOccupancy(map,max(checkOccupancy(map),0));
+
 
 prm = mobileRobotPRM(map); % create PRM planner
 

@@ -1,6 +1,10 @@
-function MoveRobot(path,percentage_threshold,tolerance)
+function updated_slam = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,percentage_threshold,tolerance)
     arguments
         path;
+        slamAlg;
+        scanSub;
+        cmdPub;
+        figure1;
         percentage_threshold = 1;
         tolerance = 0.15;
     end
@@ -8,18 +12,31 @@ function MoveRobot(path,percentage_threshold,tolerance)
 %% for finding position
 maxLidarRange = 8;
 mapResolution = 20;
-slamAlg = lidarSLAM(mapResolution, maxLidarRange);
-
-slamAlg.LoopClosureThreshold = 210;  
-slamAlg.LoopClosureSearchRadius = 8;
 
 %% for navigation
 
 time_previous = tic;
 
 
+
 path_index = 1;
 desired_position = path(path_index,:);
+
+%% For plots
+t0 = tic;
+
+global timeData headingData desiredHeadingData distanceData ax2 ax3
+
+timeData = [];
+headingData = [];
+desiredHeadingData = [];
+distanceData = [];
+
+fig2 = figure;
+ax2 = axes(fig2);
+
+fig3 = figure;
+ax3 = axes(fig3);
 
 %% PID initialization
 
@@ -42,17 +59,6 @@ Kd_d = 0.0;
 % for stopping
 drive = true;
 
-%% naw dawg
-while true
-    try
-        scanSub = ros2subscriber(controlNode, '/scan', {}, 'Reliability', 'besteffort'); % laser scan topic
-        cmdPub = ros2publisher(controlNode, '/cmd_vel', 'geometry_msgs/Twist');
-        break
-    catch
-
-    end
-end
-
 while drive
 
     %% find position and angle
@@ -65,12 +71,19 @@ while drive
 
     addScan(slamAlg, lidarScan);
     
-    [Scans, optimizedPoses]  = scansAndPoses(slamAlg);
+    [scans, optimizedPoses]  = scansAndPoses(slamAlg);
     map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
 
-    
     position = optimizedPoses(end,1:2);
     angle = optimizedPoses(end,3);
+
+    if (~validate_path([position; path],map))
+        "invalid path :(((("
+        updated_slam = slamAlg;
+        return
+    end
+    
+    plot_all(figure1,map,optimizedPoses,path);
 
     %% setup PID
     position_delta = desired_position - position;
@@ -84,15 +97,17 @@ while drive
         dt = 0.01;
     end
 
-    heading_error = atan2(sin(desired_heading-angle),cos(desired_heading-angle));
+    headingError = atan2(sin(desired_heading-angle),cos(desired_heading-angle));
     headingErrorInt = headingErrorInt + headingError * dt;
     headingErrorDer = (headingError - headingErrorPrev) / dt;
-    headingErrorPrev = heading_error;
+    headingErrorPrev = headingError;
 
-    distanceError = distanceToTarget;
+    distanceError = distance_to_target;
     distanceErrorInt = distanceErrorInt + distanceError * dt;
     distanceErrorDer = (distanceError - distanceErrorPrev) / dt;
     distanceErrorPrev = distanceError;
+
+    plot_error(angle, desired_heading,distance_to_target,t0);
 
     %% PID
 
@@ -109,17 +124,47 @@ while drive
         path_size = size(path,1);
         percentage = path_index /path_size;
         if(path_index < path_size && percentage < percentage_threshold)
-            desired_position = path(path_index,:);
+            path = path(2:end,:); % matlab plz no, whyyy :(
+            desired_position = path(1,:);
         else
+            "finished, no i'm danish"
             drive = false;
         end
     end
 
     cmdMsg = ros2message('geometry_msgs/Twist');
-    cmdMsg.linear.x = clip(linearVelocity, -0.2, 0.2);
-    cmdMsg.angular.z = clip(angularVelocity, -2.0, 2.0);
+    cmdMsg.linear.x = clip(linearVelocity, -0.2, 0.4);
+    cmdMsg.angular.z = clip(angularVelocity, -4.0, 4.0);
+
     send(cmdPub, cmdMsg);
 end
 
 
+updated_slam = slamAlg;
+end
+
+function plot_error(heading, desiredHeading,distanceToTarget,t0)
+    global timeData headingData desiredHeadingData distanceData ax2 ax3
+
+    %% Live plots
+    t = toc(t0);
+
+    timeData(end+1) = t;
+    headingData(end+1) = heading;
+    desiredHeadingData(end+1) = desiredHeading;
+    distanceData(end+1) = distanceToTarget;
+
+    plot(ax2, timeData, headingData, 'b', timeData, desiredHeadingData, 'r--', 'LineWidth', 1.5);
+    xlabel(ax2, 'Time [s]');
+    ylabel(ax2, 'Heading [rad]');
+    legend(ax2, 'Actual heading', 'Desired heading');
+    grid(ax2, 'on');
+
+    plot(ax3, timeData, distanceData, 'k', 'LineWidth', 1.5);
+    xlabel(ax3, 'Time [s]');
+    ylabel(ax3, 'Distance to current waypoint [m]');
+    legend(ax3, 'Distance to waypoint');
+    grid(ax3, 'on');
+
+    drawnow limitrate;
 end
