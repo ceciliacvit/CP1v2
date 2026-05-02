@@ -17,6 +17,9 @@ initialized=false;
 
 while true
     scan = receive(scanSub);
+    if isempty(scan)
+        continue;
+    end
     try % catch if scan is empty
         lidarScan=rosReadLidarScan(scan);
     catch
@@ -45,12 +48,12 @@ while true
     if initialized==true
         target = findNextTarget(map, grid_pos,figure2);
         target=grid2world(map,target);
-        
+       
         path = createPath(position,target,map);
         path
         % Plot path
            
-        slamAlg = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,0.8);
+        slamAlg = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,1);
     end
     
     hold off;
@@ -68,7 +71,7 @@ function target = findNextTarget(map, grid_pos,fig)
     BW = edge(probabilities,'sobel');
     
     inflation = occupancyMap(probabilities);
-    inflate(inflation,0.3);
+    inflate(inflation,0.4);
     BW = BW .* (inflation.occupancyMatrix *-1 + 1);
     size(BW)
     size(radialLinearMatrix(size(BW),grid_pos,0.2))

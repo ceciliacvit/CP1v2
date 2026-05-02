@@ -26,6 +26,11 @@ while true
 
 end
 
+fig2 = figure;
+ax2 = axes(fig2);
+
+fig3 = figure;
+ax3 = axes(fig3);
 
 
 try
