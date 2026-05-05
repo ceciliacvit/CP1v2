@@ -14,6 +14,8 @@ maxLidarRange = 8;
 mapResolution = 20;
 
 %% for navigation
+lookahead_dist = 0.3;      % pure pursuit lookahead distance [m]
+map_rebuild_interval = 5;  % rebuild occupancy map every N scans
 
 time_previous = tic;
 
@@ -64,8 +66,26 @@ Kp_d = 0.2;
 Ki_d = 0.0;
 Kd_d = 0.0;
 
-% for stopping
 drive = true;
+
+% Build initial map before entering the loop
+scan = receive(scanSub);
+
+patience = 5;
+
+time_not_moving = 0;
+
+prev_position = [0,0];
+prev_heading = 0;
+
+try
+    lidarScan = rosReadLidarScan(scan);
+    addScan(slamAlg, lidarScan);
+catch
+end
+[scans, optimizedPoses] = scansAndPoses(slamAlg);
+map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+map_rebuild_counter = 0;
 
 while drive
 
@@ -77,15 +97,21 @@ while drive
     end
 
     try % catch if scan is empty
-        lidarScan=rosReadLidarScan(scan);
+        lidarScan = rosReadLidarScan(scan);
     catch
         continue;
-    end    
+    end
 
     addScan(slamAlg, lidarScan);
-    
-    [scans, optimizedPoses]  = scansAndPoses(slamAlg);
-    map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+
+    [scans, optimizedPoses] = scansAndPoses(slamAlg);
+
+    % Rebuild map every N scans to keep control loop responsive
+    map_rebuild_counter = map_rebuild_counter + 1;
+    if map_rebuild_counter >= map_rebuild_interval
+        map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+        map_rebuild_counter = 0;
+    end
 
     position = optimizedPoses(end,1:2);
     desired_position;
@@ -116,17 +142,67 @@ while drive
         dt = 0.01;
     end
 
-    headingError = atan2(sin(desired_heading-angle),cos(desired_heading-angle));
+    position_diff = norm(position - prev_position)
+    angle_diff = atan2(sin(prev_heading - angle), cos(prev_heading - angle))
+
+    if (position_diff < 0.02 & abs(angle_diff) < 0.05)
+        time_not_moving = time_not_moving + dt;
+        if (time_not_moving > patience)
+            "tic toc, stop moving"
+            stop_robot(cmdPub);
+            updated_slam = slamAlg;
+            time_not_moving = 0;
+            return;
+        end
+    else
+        time_not_moving = 0;
+    end        
+    
+    stop_robot(cmdPub);
+    updated_slam = slamAlg;
+
+    prev_heading = angle;
+    prev_position = position;
+
+    % Only validate the remaining path segment from current position
+    if (~validate_path([position; path(path_index:end,:)], map))
+        "invalid path :(((("
+        stop_robot(cmdPub);
+        updated_slam = slamAlg;
+        return
+    end
+
+    %% Advance waypoint index when within tolerance
+    if norm(position - path(path_index,:)) < tolerance
+        path_index = path_index + 1;
+        if path_index > max_index || path_index > total_waypoints
+            "finished, no i'm danish"
+            drive = false;
+            break;
+        end
+    end
+
+    %% Pure pursuit: aim at a lookahead point along the remaining path
+    lookahead_point = find_lookahead(path, path_index, position, lookahead_dist);
+
+    plot_all(figure1, map, optimizedPoses, path, lookahead_point);
+
+    position_delta   = lookahead_point - position;
+    desired_heading  = atan2(position_delta(2), position_delta(1));
+    distance_to_target = norm(path(path_index,:) - position);
+
+
+    headingError    = atan2(sin(desired_heading - angle), cos(desired_heading - angle));
     headingErrorInt = headingErrorInt + headingError * dt;
     headingErrorDer = (headingError - headingErrorPrev) / dt;
     headingErrorPrev = headingError;
 
-    distanceError = distance_to_target;
+    distanceError    = distance_to_target;
     distanceErrorInt = distanceErrorInt + distanceError * dt;
     distanceErrorDer = (distanceError - distanceErrorPrev) / dt;
     distanceErrorPrev = distanceError;
 
-    plot_error(angle, desired_heading,distance_to_target,t0);
+    plot_error(angle, desired_heading, distance_to_target, t0);
 
     %% PID
 
@@ -134,9 +210,9 @@ while drive
                     + Ki_h * headingErrorInt ...
                     + Kd_h * headingErrorDer;
 
-    linearVelocity = Kp_d * distanceError ...
-                   + Ki_d * distanceErrorInt ...
-                   + Kd_d * distanceErrorDer;
+    linearVelocity  = Kp_d * distanceError ...
+                    + Ki_d * distanceErrorInt ...
+                    + Kd_d * distanceErrorDer;
 
     if abs(headingError) > pi/32
         linearVelocity = 0;
@@ -171,7 +247,7 @@ while drive
     send(cmdPub, cmdMsg);
 end
 
-
+stop_robot(cmdPub);
 updated_slam = slamAlg;
 end
 
@@ -184,7 +260,7 @@ function plot_error(heading, desiredHeading, distanceToTarget, t0)
     timeData(end+1) = t;
     headingData(end+1) = heading;
     desiredHeadingData(end+1) = desiredHeading;
-    distanceData(end+1) = distanceToTarget;
+    distanceData(end+1)      = distanceToTarget;
 
     % Plot heading
     plot(ax2, timeData, headingData, 'b', 'LineWidth', 1.5);

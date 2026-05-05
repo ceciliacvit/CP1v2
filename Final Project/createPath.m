@@ -5,7 +5,7 @@ function path = createPath(start, goal, map)
 updateOccupancy(map,max(checkOccupancy(map),0));
 inflate(map,0.15);
 
-prm = mobileRobotPRM(map,500); % create PRM planner
+prm = mobileRobotPRM(map,500,500); % create PRM planner
 
 
 

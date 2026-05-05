@@ -1,4 +1,4 @@
-function map = explore(scanSub,cmdPub)
+function slamAlg = explore(scanSub,cmdPub)
 'explore started'
 maxLidarRange = 8;
 mapResolution = 20;
@@ -60,7 +60,10 @@ while true
     drawnow;
     i = i+1;
 
-    
+    if(i > 19)
+        "aaaaaaaaaaaa"
+        return
+    end
 end
 
 end

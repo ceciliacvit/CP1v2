@@ -37,9 +37,11 @@ try
     %% Define publishers
     cmdPub = ros2publisher(controlNode, '/cmd_vel', 'geometry_msgs/Twist');
 
-    explore(scanSub,cmdPub)
+    slamAlg = explore(scanSub,cmdPub);
 
+    points = plot_and_box(slamAlg)
 
+    move_to_box(scanSub,cmdPub,points(1:4,:),slamAlg);
 
 catch ME
     %% Catching potential errors
