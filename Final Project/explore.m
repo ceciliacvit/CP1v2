@@ -14,6 +14,9 @@ path=[0,0];
 target = [0,0];
 i = 0;
 initialized=false;
+duds=[];
+fails=0;
+patience = 3; % How many times to try to go to target before new target is created
 
 while true
     scan = receive(scanSub);
@@ -44,16 +47,20 @@ while true
         initialized=true;
     end
 
-    % If close to target find another target
+    % Find new target
     if initialized==true
-        target = findNextTarget(map, grid_pos,figure2);
+        target = findNextTarget(map, grid_pos,figure2,duds);
         target=grid2world(map,target);
        
         path = createPath(position,target,map);
-        path
-        % Plot path
-           
-        slamAlg = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,1);
+        
+        slamAlg,fail = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,1);
+        if fail
+            fails=fails+1;
+            if fails>patience
+                duds(end+1,:)=target;
+            end
+        end
     end
     
     hold off;
@@ -61,14 +68,14 @@ while true
     i = i+1;
 
     if(i > 19)
-        "aaaaaaaaaaaa"
+        "Finished searching area"
         return
     end
 end
 
 end
 
-function target = findNextTarget(map, grid_pos,fig)
+function target = findNextTarget(map, grid_pos,fig,duds)
     probabilities = map.occupancyMatrix;
 
     BW = edge(probabilities,'sobel');
@@ -80,11 +87,39 @@ function target = findNextTarget(map, grid_pos,fig)
     size(radialLinearMatrix(size(BW),grid_pos,0.2))
     BW = BW .* radialLinearMatrix(size(BW),grid_pos,0.2);
     BW = imfilter(BW, ones(3,3)/9, 'replicate');
-    %figure(fig);
-    %imshow(BW)
-    %drawnow;
-    [~,index] = max(BW,[],'all',"linear"); %finds the maximum over all elements of z
-    [X,Y] = ind2sub(size(BW),index);
+    
+    radius = 4; % tune this
+    P = ones(size(BW));
+
+    [X,Y] = meshgrid(1:size(BW,2), 1:size(BW,1));
+    
+    for i = 1:size(duds,1)
+        dud = duds(i,:);
+        duds
+        dud
+
+        D = sqrt((X - dud(1)).^2 + (Y - dud(2)).^2);
+        mask = D > radius;
+
+        % inside radius → penalize
+        localPenalty = mask + (~mask)*0.2;  % 0.2 = strong suppression
+        
+        P = P .* localPenalty;
+    end
+
+    BW = BW .* P;
+    BW = BW.*P;
+    [~, sorted_idx] = sort(BW, 'descend');
+    
+    k = 10; % top candidates
+    if length(sorted_idx)>k
+        candidates = sorted_idx(1:k);
+    else
+        candidates = sorted_idx;
+    end
+    
+    chosen = candidates(randi(k));
+    [X,Y] = ind2sub(size(BW), chosen);
     target=[X,Y];
 end
 

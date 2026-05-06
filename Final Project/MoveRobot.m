@@ -1,4 +1,4 @@
-function updated_slam = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,percentage_threshold,tolerance)
+function updated_slam,fail = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,percentage_threshold,tolerance)
     arguments
         path;
         slamAlg;
@@ -18,7 +18,7 @@ lookahead_dist = 0.3;      % pure pursuit lookahead distance [m]
 map_rebuild_interval = 5;  % rebuild occupancy map every N scans
 
 time_previous = tic;
-
+fail=false;
 path
 
 path_index = 1;
@@ -132,8 +132,8 @@ while drive
     
     %% setup PID
     position_delta = desired_position - position;
-    desired_heading = atan2(position_delta(2),position_delta(1))
-    distance_to_target = norm(position_delta)
+    desired_heading = atan2(position_delta(2),position_delta(1));
+    distance_to_target = norm(position_delta);
 
     dt = toc(time_previous);
     time_previous = tic;
@@ -142,8 +142,8 @@ while drive
         dt = 0.01;
     end
 
-    position_diff = norm(position - prev_position)
-    angle_diff = atan2(sin(prev_heading - angle), cos(prev_heading - angle))
+    position_diff = norm(position - prev_position);
+    angle_diff = atan2(sin(prev_heading - angle), cos(prev_heading - angle));
 
     if (position_diff < 0.02 & abs(angle_diff) < 0.05)
         time_not_moving = time_not_moving + dt;
@@ -152,6 +152,7 @@ while drive
             stop_robot(cmdPub);
             updated_slam = slamAlg;
             time_not_moving = 0;
+            fail=true;
             return;
         end
     else
