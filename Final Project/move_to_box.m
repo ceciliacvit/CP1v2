@@ -39,7 +39,7 @@ while true
     path
     % Plot path
        
-    slamAlg,fail = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,0.8);
+    [slamAlg,fail] = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,0.8);
     
     hold off;
     drawnow;

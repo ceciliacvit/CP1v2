@@ -54,7 +54,7 @@ while true
        
         path = createPath(position,target,map);
         
-        slamAlg,fail = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,1);
+        [slamAlg,fail] = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,1);
         if fail
             fails=fails+1;
             if fails>patience
@@ -67,7 +67,7 @@ while true
     drawnow;
     i = i+1;
 
-    if(i > 19)
+    if(i > 30)
         "Finished searching area"
         return
     end

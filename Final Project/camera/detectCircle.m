@@ -1,9 +1,13 @@
 function circle = detectCircle()
 % access to circle.found (bool), circle.distance (m), circle.angle_error (rad)
 
-    node = ros2node('/camera_detect');
-    sub  = ros2subscriber(node, '/camera/image_raw/compressed');
-    img  = rosReadImage(receive(sub, 5));
+    global img
+    controlNode = ros2node('/base_station');
+    sub  = ros2subscriber(controlNode, '/camera/image_raw/compressed', @imageCallback); % image topic
+    % img  = rosReadImage(receive(sub, 5));
+    while isempty(img)
+        pause(0.01);
+    end
 
     cols = size(img, 2); % width of the image in pixels
     R = img(:,:,1);
@@ -12,7 +16,7 @@ function circle = detectCircle()
 
     is_orange = (R > 200) .* (G > 80)  .* (B < 80);
     is_blue = (R < 100) .* (G < 150) .* (B > 150);
-
+    
     mask = imopen(is_orange | is_blue, strel('disk', 3)); % remove small noise spots
     mask = imclose(mask, strel('disk', 20)); % close small gaps
     mask = imfill(mask, 'holes'); % fill holes inside the shape
@@ -33,8 +37,17 @@ function circle = detectCircle()
     circle.distance = 1266 * 0.10 / (2 * r);
 end
 
+
 % after detecting the circle, we can use the following given the bot's current position (px, py, theta)
 % bearing  = theta - circle.angle_error;
 % target_x = px + (circle.distance - 1.0) * cos(bearing);
 % target_y = py + (circle.distance - 1.0) * sin(bearing);
 % which should take us to a point 1m in front of the circle
+
+function imageCallback(message)
+    % Use global variable to store laser scan data
+    global img
+
+    % Save the laser scan message
+    img = rosReadImage(message);
+end

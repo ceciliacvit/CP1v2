@@ -1,4 +1,4 @@
-function updated_slam,fail = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,percentage_threshold,tolerance)
+function [updated_slam,fail] = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,percentage_threshold,tolerance)
     arguments
         path;
         slamAlg;
@@ -280,4 +280,11 @@ function plot_error(heading, desiredHeading, distanceToTarget, t0)
     grid(ax3, 'on');
 
     drawnow limitrate;
+end
+
+function stop_robot(cmdPub)
+    cmdMsg = ros2message('geometry_msgs/Twist');
+    cmdMsg.linear.x = 0;
+    cmdMsg.angular.z = 0;
+    send(cmdPub,cmdMsg);
 end
