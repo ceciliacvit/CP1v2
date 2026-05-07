@@ -1,4 +1,4 @@
-function [updated_slam,fail] = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,percentage_threshold,tolerance)
+function [updated_slam, fail] = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,percentage_threshold,tolerance)
     arguments
         path;
         slamAlg;
@@ -18,15 +18,15 @@ lookahead_dist = 0.3;      % pure pursuit lookahead distance [m]
 map_rebuild_interval = 5;  % rebuild occupancy map every N scans
 
 time_previous = tic;
-fail=false;
-path
+fail = false;
 
 path_index = 1;
-if(isempty(path))
+if isempty(path)
+    updated_slam = slamAlg;
     return
 end
-path_size = size(path,1);
-desired_position = path(path_index,:);
+total_waypoints = size(path, 1);
+max_index = round(total_waypoints * percentage_threshold);
 
 %% For plots
 t0 = tic;
@@ -38,12 +38,9 @@ headingData = [];
 desiredHeadingData = [];
 distanceData = [];
 
-global ax2 ax3
-
-figure; % or use figure1 if you want everything in same window
-
-ax2 = subplot(2,1,1); % top plot: heading
-ax3 = subplot(2,1,2); % bottom plot: distance
+figure;
+ax2 = subplot(2,1,1);
+ax3 = subplot(2,1,2);
 
 hold(ax2, 'on');
 hold(ax3, 'on');
@@ -72,9 +69,7 @@ drive = true;
 scan = receive(scanSub);
 
 patience = 5;
-
 time_not_moving = 0;
-
 prev_position = [0,0];
 prev_heading = 0;
 
@@ -90,7 +85,6 @@ map_rebuild_counter = 0;
 while drive
 
     %% find position and angle
-    
     scan = receive(scanSub);
     if isempty(scan)
         continue;
@@ -114,55 +108,32 @@ while drive
     end
 
     position = optimizedPoses(end,1:2);
-    desired_position;
-    angle = optimizedPoses(end,3);
-
-    plot_all(figure1,map,optimizedPoses,path);
-
-    if (~validate_path([position; path],map))
-        "invalid path :(((("
-        updated_slam = slamAlg;
-        cmdMsg = ros2message('geometry_msgs/Twist');
-        cmdMsg.Linear.X = 0;
-        cmdMsg.Angular.Z = 0;
-        send(cmdPub, cmdMsg);
-        return
-    end
-    
-    
-    %% setup PID
-    position_delta = desired_position - position;
-    desired_heading = atan2(position_delta(2),position_delta(1));
-    distance_to_target = norm(position_delta);
+    angle    = optimizedPoses(end,3);
 
     dt = toc(time_previous);
     time_previous = tic;
-
     if dt <= 0
         dt = 0.01;
     end
 
+    %% Stuck detection
     position_diff = norm(position - prev_position);
     angle_diff = atan2(sin(prev_heading - angle), cos(prev_heading - angle));
-
-    if (position_diff < 0.02 & abs(angle_diff) < 0.05)
+    if position_diff < 0.02 && abs(angle_diff) < 0.05
         time_not_moving = time_not_moving + dt;
-        if (time_not_moving > patience)
-            "tic toc, stop moving"
+        if time_not_moving > patience
+            'aaaaaaaa copy'
             stop_robot(cmdPub);
             updated_slam = slamAlg;
             time_not_moving = 0;
-            fail=true;
+            fail = true;
             return;
         end
     else
         time_not_moving = 0;
-    end        
-    
-    stop_robot(cmdPub);
-    updated_slam = slamAlg;
+    end
 
-    prev_heading = angle;
+    prev_heading  = angle;
     prev_position = position;
 
     % Only validate the remaining path segment from current position
@@ -192,7 +163,6 @@ while drive
     desired_heading  = atan2(position_delta(2), position_delta(1));
     distance_to_target = norm(path(path_index,:) - position);
 
-
     headingError    = atan2(sin(desired_heading - angle), cos(desired_heading - angle));
     headingErrorInt = headingErrorInt + headingError * dt;
     headingErrorDer = (headingError - headingErrorPrev) / dt;
@@ -215,35 +185,16 @@ while drive
                     + Ki_d * distanceErrorInt ...
                     + Kd_d * distanceErrorDer;
 
-    if abs(headingError) > pi/32
-        linearVelocity = 0;
-    end
+    linearVelocity = linearVelocity * max(0, cos(headingError) .^ 8);
 
-    if distance_to_target < tolerance
-        path_index = path_index + 1;
-
-        percentage = path_index /path_size;
-        if(~isempty(path) && percentage < percentage_threshold)
-            path = path(2:end,:); % matlab plz no, whyyy :(
-            desired_position = path(1,:);
-            % desired_position = path(path_index,:);
-        else
-            "finished, no i'm danish"
-            drive = false;
-        end
+    % Gentle deceleration close to the current waypoint
+    if distance_to_target < 0.05
+        linearVelocity = linearVelocity * 0.5;
     end
 
     cmdMsg = ros2message('geometry_msgs/Twist');
-    cmdMsg.linear.x = clip(linearVelocity, 0.00, 0.4);
-    cmdMsg.angular.z = clip(angularVelocity, -1.0, 1.0);
-
-    % in case we really need to skiddadle
-    if(abs(linearVelocity) <= 0.1 && abs(angularVelocity) >= 1)
-        cmdMsg.linear.x = 0.00;
-    end
-
-    speed = cmdMsg.linear.x
-    ang_speed = cmdMsg.angular.z
+    cmdMsg.linear.x  = clip(linearVelocity,  -0.4, 0.4);
+    cmdMsg.angular.z = clip(angularVelocity, -4.0, 4.0);
 
     send(cmdPub, cmdMsg);
 end
@@ -252,39 +203,78 @@ stop_robot(cmdPub);
 updated_slam = slamAlg;
 end
 
+
+function lookahead = find_lookahead(path, path_index, position, L_d)
+% Project position onto the current path segment, then walk L_d arc-length
+% forward along the path so the lookahead point is always on the path.
+    n = size(path, 1);
+
+    % Current segment: path(path_index-1) -> path(path_index)
+    if path_index > 1
+        p1 = path(path_index-1,:);
+        p2 = path(path_index,:);
+        d  = p2 - p1;
+        t  = dot(position - p1, d) / dot(d, d);
+        t  = max(0, min(1, t));
+        start_point = p1 + t * d;
+        start_seg   = path_index - 1;
+    else
+        start_point = path(1,:);
+        start_seg   = 1;
+    end
+
+    remaining = L_d;
+    for i = start_seg : n-1
+        if i == start_seg
+            p_start = start_point;
+        else
+            p_start = path(i,:);
+        end
+        p_end   = path(i+1,:);
+        seg_len = norm(p_end - p_start);
+        if seg_len < 1e-9
+            continue;
+        end
+        if remaining <= seg_len
+            lookahead = p_start + (remaining / seg_len) * (p_end - p_start);
+            return;
+        end
+        remaining = remaining - seg_len;
+    end
+
+    lookahead = path(end,:);
+end
+
+
+function stop_robot(cmdPub)
+    cmdMsg = ros2message('geometry_msgs/Twist');
+    cmdMsg.linear.x  = 0;
+    cmdMsg.angular.z = 0;
+    send(cmdPub, cmdMsg);
+end
+
+
 function plot_error(heading, desiredHeading, distanceToTarget, t0)
     global timeData headingData desiredHeadingData distanceData ax2 ax3
 
     t = toc(t0);
 
-    % Append data
-    timeData(end+1) = t;
-    headingData(end+1) = heading;
+    timeData(end+1)           = t;
+    headingData(end+1)        = heading;
     desiredHeadingData(end+1) = desiredHeading;
-    distanceData(end+1)      = distanceToTarget;
+    distanceData(end+1)       = distanceToTarget;
 
-    % Plot heading
     plot(ax2, timeData, headingData, 'b', 'LineWidth', 1.5);
     plot(ax2, timeData, desiredHeadingData, 'r--', 'LineWidth', 1.5);
-
     xlabel(ax2, 'Time [s]');
     ylabel(ax2, 'Heading [rad]');
     legend(ax2, 'Actual', 'Desired');
     grid(ax2, 'on');
 
-    % Plot distance
     plot(ax3, timeData, distanceData, 'k', 'LineWidth', 1.5);
-
     xlabel(ax3, 'Time [s]');
     ylabel(ax3, 'Distance [m]');
     grid(ax3, 'on');
 
     drawnow limitrate;
-end
-
-function stop_robot(cmdPub)
-    cmdMsg = ros2message('geometry_msgs/Twist');
-    cmdMsg.linear.x = 0;
-    cmdMsg.angular.z = 0;
-    send(cmdPub,cmdMsg);
 end
