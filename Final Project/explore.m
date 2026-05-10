@@ -108,18 +108,26 @@ function target = findNextTarget(map, grid_pos,fig,duds)
     end
 
     BW = BW .* P;
-    BW = BW.*P;
-    [~, sorted_idx] = sort(BW, 'descend');
-    
+    [~, sorted_idx] = sort(BW(:), 'descend');
     k = 10; % top candidates
     if length(sorted_idx)>k
-        candidates = sorted_idx(1:k);
+        candidates = sorted_idx(1:k);        
     else
         candidates = sorted_idx;
     end
-    
+
     chosen = candidates(randi(k));
     [X,Y] = ind2sub(size(BW), chosen);
+
+
+
+    figure(fig)
+    imshow(BW)
+    hold on
+    axis on
+    plot(X,Y,'ro')
+    hold off
+
     target=[X,Y];
 end
 
