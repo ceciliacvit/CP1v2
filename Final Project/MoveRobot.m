@@ -5,7 +5,7 @@ function [updated_slam, fail] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,fi
         scanSub;
         odomSub;
         cmdPub;
-        figure1;
+        figure1 = 0;
         percentage_threshold = 1;
         tolerance = 0.20;
     end
@@ -198,16 +198,16 @@ while drive
     %% Pure pursuit: aim at a lookahead point along the remaining path
     lookahead_point = find_lookahead(path, path_index, position, lookahead_dist);
 
-    plot_all(figure1, map, optimizedPoses, path, lookahead_point);
-
+    if(figure1 ~= 0)
+        plot_all(figure1, map, optimizedPoses, path, lookahead_point);
+    end
     position_delta   = lookahead_point - position;
     desired_heading  = atan2(position_delta(2), position_delta(1));
     distance_to_target = norm(path(path_index,:) - position);
 
-    headingError    = atan2(sin(desired_heading - angle), cos(desired_heading - angle));
-    headingErrorInt = headingErrorInt + headingError * dt;
-    headingErrorDer = (headingError - headingErrorPrev) / dt;
-    headingErrorPrev = headingError;
+ 
+
+
 
     distanceError    = distance_to_target;
     distanceErrorInt = distanceErrorInt + distanceError * dt;
@@ -217,10 +217,6 @@ while drive
     plot_error(angle, desired_heading, distance_to_target, t0);
 
     %% PID
-
-    angularVelocity = Kp_h * headingError ...
-                    + Ki_h * headingErrorInt ...
-                    + Kd_h * headingErrorDer;
 
     linearVelocity  = Kp_d * distanceError ...
                     + Ki_d * distanceErrorInt ...
@@ -234,8 +230,8 @@ while drive
     end
 
     cmdMsg = ros2message('geometry_msgs/Twist');
+    [cmdMsg.angular.z,headingErrorInt,headingErrorPrev,~] = look_at(angle,desired_heading,headingErrorInt,headingErrorPrev);
     cmdMsg.linear.x  = clip(linearVelocity,  -0.4, 0.4);
-    cmdMsg.angular.z = clip(angularVelocity, -4.0, 4.0);
 
     % send(cmdPub, cmdMsg);
 end
