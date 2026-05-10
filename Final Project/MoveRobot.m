@@ -130,7 +130,11 @@ while drive
     dist_moved  = norm(position - last_scan_position);
     angle_moved = abs(atan2(sin(angle - last_scan_angle), cos(angle - last_scan_angle)));
     if dist_moved > 0.05 || angle_moved > 0.1
-        addScan(slamAlg, lidarScan);
+        d_odom  = curr_odom_pos - odom_anchor_pos;
+        d_theta = atan2(sin(curr_odom_angle - odom_anchor_angle), cos(curr_odom_angle - odom_anchor_angle));
+        c = cos(odom_anchor_angle); s = sin(odom_anchor_angle);
+        relPoseEst = [c*d_odom(1)+s*d_odom(2), -s*d_odom(1)+c*d_odom(2), d_theta];
+        addScan(slamAlg, lidarScan, relPoseEst);
         last_scan_position = position;
         last_scan_angle    = angle;
 
