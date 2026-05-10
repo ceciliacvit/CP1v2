@@ -16,6 +16,13 @@ i = 0;
 initialized=false;
 position = [0, 0];
 last_scan_position = [Inf, Inf];
+last_odom_pos   = [0, 0];
+last_odom_angle = 0;
+odom_msg = odomSub.LatestMessage;
+if ~isempty(odom_msg)
+    last_odom_pos   = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
+    last_odom_angle = quat_to_yaw(odom_msg.pose.pose.orientation);
+end
 duds=[];
 fails=0;
 patience = 3; % How many times to try to go to target before new target is created
@@ -34,7 +41,20 @@ while true
     end    
 
     if norm(position - last_scan_position) > 0.1
-        addScan(slamAlg, lidarScan);
+        odom_msg = odomSub.LatestMessage;
+        if ~isempty(odom_msg)
+            curr_odom_pos   = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
+            curr_odom_angle = quat_to_yaw(odom_msg.pose.pose.orientation);
+            d_odom  = curr_odom_pos - last_odom_pos;
+            d_theta = atan2(sin(curr_odom_angle - last_odom_angle), cos(curr_odom_angle - last_odom_angle));
+            c = cos(last_odom_angle); s = sin(last_odom_angle);
+            relPoseEst = [c*d_odom(1)+s*d_odom(2), -s*d_odom(1)+c*d_odom(2), d_theta];
+            addScan(slamAlg, lidarScan, relPoseEst);
+            last_odom_pos   = curr_odom_pos;
+            last_odom_angle = curr_odom_angle;
+        else
+            addScan(slamAlg, lidarScan);
+        end
         last_scan_position = position;
 
         %create map
@@ -62,6 +82,18 @@ while true
         path = createPath(position,target,map);
         
         [slamAlg,fail] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,1);
+
+        % Resync after navigation so the scan threshold doesn't deadlock
+        [scans, optimizedPoses] = scansAndPoses(slamAlg);
+        map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+        position = optimizedPoses(end,1:2);
+        last_scan_position = position;
+        odom_msg = odomSub.LatestMessage;
+        if ~isempty(odom_msg)
+            last_odom_pos   = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
+            last_odom_angle = quat_to_yaw(odom_msg.pose.pose.orientation);
+        end
+
         if fail
             fails=fails+1;
             if fails>patience
@@ -157,9 +189,13 @@ end
 
 function M = radialLinearMatrix(size, grid_pos,minVal)
     [X,Y] = meshgrid(1:size(2),1:size(1));
-    
+
     D = sqrt((Y-grid_pos(2)).^2 + (X-grid_pos(1)).^2);   % distance from chosen point
     Dmax = max(D(:));                  % farthest point in matrix
-    
+
     M = max(minVal, 1 - 0.8*(D/Dmax));
+end
+
+function yaw = quat_to_yaw(q)
+    yaw = atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y^2 + q.z^2));
 end
