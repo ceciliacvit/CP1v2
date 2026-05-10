@@ -4,7 +4,9 @@ maxLidarRange = 8;
 mapResolution = 20;
 slamAlg = lidarSLAM(mapResolution, maxLidarRange);
 
-slamAlg.LoopClosureThreshold = 210;  
+slamAlg.OptimizationInterval = 1;
+slamAlg.LoopClosureMaxAttempts = 10;
+slamAlg.LoopClosureThreshold = 100;  
 slamAlg.LoopClosureSearchRadius = 8;
 global visualise
 visualise=TurtleBotVisualise();
