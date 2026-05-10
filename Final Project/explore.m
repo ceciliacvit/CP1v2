@@ -1,4 +1,4 @@
-function slamAlg = explore(scanSub,cmdPub)
+function slamAlg = explore(scanSub,cmdPub,odomSub)
 'explore started'
 maxLidarRange = 8;
 mapResolution = 20;
@@ -14,9 +14,13 @@ path=[0,0];
 target = [0,0];
 i = 0;
 initialized=false;
+position = [0, 0];
+last_scan_position = [Inf, Inf];
 duds=[];
 fails=0;
 patience = 3; % How many times to try to go to target before new target is created
+start_explore = tic;
+explore_time = 60*10;
 
 while true
     scan = receive(scanSub);
@@ -29,13 +33,16 @@ while true
         continue;
     end    
 
-    addScan(slamAlg, lidarScan);
-    
-    %create map
-    [scans, optimizedPoses]  = scansAndPoses(slamAlg);
-    map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
-    
-    position = optimizedPoses(end,1:2);
+    if norm(position - last_scan_position) > 0.1
+        addScan(slamAlg, lidarScan);
+        last_scan_position = position;
+
+        %create map
+        [scans, optimizedPoses]  = scansAndPoses(slamAlg);
+        map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+
+        position = optimizedPoses(end,1:2);
+    end
 
     %plot map
     plot_all(figure1,map,optimizedPoses);
@@ -54,7 +61,7 @@ while true
        
         path = createPath(position,target,map);
         
-        [slamAlg,fail] = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,1);
+        [slamAlg,fail] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,1);
         if fail
             fails=fails+1;
             if fails>patience
@@ -62,15 +69,31 @@ while true
             end
         end
     end
+
+
     
     hold off;
     drawnow;
     i = i+1;
 
-    if(i > 30)
-        "Finished searching area"
+    time_explored = toc(start_explore);
+    if(time_explored > explore_time)
+        "timeout"
+        [scans, optimizedPoses] = scansAndPoses(slamAlg);
+        map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+
+        occ_matrix    = map.occupancyMatrix;
+        resolution    = map.Resolution;
+        grid_location = map.GridLocationInWorld;
+        save('explored_map.mat', 'occ_matrix', 'resolution', 'grid_location', 'slamAlg');
+
+        img = flipud(1 - occ_matrix);
+        imwrite(img, 'explored_map.png');
+
         return
     end
+
+
 end
 
 end
@@ -122,9 +145,10 @@ function target = findNextTarget(map, grid_pos,fig,duds)
 
 
     figure(fig)
-    imshow(BW)
     hold on
+
     axis on
+    imshow(BW)
     plot(X,Y,'ro')
     hold off
 

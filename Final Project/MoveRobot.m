@@ -1,8 +1,9 @@
-function [updated_slam, fail] = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,percentage_threshold,tolerance)
+function [updated_slam, fail] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,percentage_threshold,tolerance)
     arguments
         path;
         slamAlg;
         scanSub;
+        odomSub;
         cmdPub;
         figure1;
         percentage_threshold = 1;
@@ -81,6 +82,23 @@ end
 [scans, optimizedPoses] = scansAndPoses(slamAlg);
 map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
 map_rebuild_counter = 0;
+last_scan_position = optimizedPoses(end,1:2);
+last_scan_angle    = optimizedPoses(end,3);
+position = optimizedPoses(end,1:2);
+angle    = optimizedPoses(end,3);
+
+% Odom anchors — dead reckon from here between SLAM updates
+odom_anchor_pos   = [0, 0];
+odom_anchor_angle = 0;
+odom_msg = odomSub.LatestMessage;
+if ~isempty(odom_msg)
+    odom_anchor_pos   = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
+    odom_anchor_angle = quat_to_yaw(odom_msg.pose.pose.orientation);
+end
+slam_anchor_pos   = position;
+slam_anchor_angle = angle;
+curr_odom_pos     = odom_anchor_pos;
+curr_odom_angle   = odom_anchor_angle;
 
 while drive
 
@@ -96,19 +114,42 @@ while drive
         continue;
     end
 
-    addScan(slamAlg, lidarScan);
-
-    [scans, optimizedPoses] = scansAndPoses(slamAlg);
-
-    % Rebuild map every N scans to keep control loop responsive
-    map_rebuild_counter = map_rebuild_counter + 1;
-    if map_rebuild_counter >= map_rebuild_interval
-        map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
-        map_rebuild_counter = 0;
+    %% Dead reckoning from odometry between SLAM updates
+    curr_odom_pos   = odom_anchor_pos;
+    curr_odom_angle = odom_anchor_angle;
+    odom_msg = odomSub.LatestMessage;
+    if ~isempty(odom_msg)
+        curr_odom_pos   = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
+        curr_odom_angle = quat_to_yaw(odom_msg.pose.pose.orientation);
+        position = slam_anchor_pos + (curr_odom_pos - odom_anchor_pos);
+        angle    = slam_anchor_angle + atan2(sin(curr_odom_angle - odom_anchor_angle), ...
+                                             cos(curr_odom_angle - odom_anchor_angle));
     end
 
-    position = optimizedPoses(end,1:2);
-    angle    = optimizedPoses(end,3);
+    %% Add scan and resync SLAM when robot has moved enough
+    dist_moved  = norm(position - last_scan_position);
+    angle_moved = abs(atan2(sin(angle - last_scan_angle), cos(angle - last_scan_angle)));
+    if dist_moved > 0.05 || angle_moved > 0.1
+        addScan(slamAlg, lidarScan);
+        last_scan_position = position;
+        last_scan_angle    = angle;
+
+        [scans, optimizedPoses] = scansAndPoses(slamAlg);
+
+        map_rebuild_counter = map_rebuild_counter + 1;
+        if map_rebuild_counter >= map_rebuild_interval
+            map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+            map_rebuild_counter = 0;
+        end
+
+        % Resync: treat SLAM-corrected pose as the new anchor
+        slam_anchor_pos   = optimizedPoses(end,1:2);
+        slam_anchor_angle = optimizedPoses(end,3);
+        position = slam_anchor_pos;
+        angle    = slam_anchor_angle;
+        odom_anchor_pos   = curr_odom_pos;
+        odom_anchor_angle = curr_odom_angle;
+    end
 
     dt = toc(time_previous);
     time_previous = tic;
@@ -196,7 +237,7 @@ while drive
     cmdMsg.linear.x  = clip(linearVelocity,  -0.4, 0.4);
     cmdMsg.angular.z = clip(angularVelocity, -4.0, 4.0);
 
-    send(cmdPub, cmdMsg);
+    % send(cmdPub, cmdMsg);
 end
 
 stop_robot(cmdPub);
@@ -277,4 +318,9 @@ function plot_error(heading, desiredHeading, distanceToTarget, t0)
     grid(ax3, 'on');
 
     drawnow limitrate;
+end
+
+
+function yaw = quat_to_yaw(q)
+    yaw = atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y^2 + q.z^2));
 end

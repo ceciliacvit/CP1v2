@@ -3,7 +3,7 @@ clear all
 clc
 close all
 
-%% Declare global variables for robot pose and laser scan data
+%% Declare global variables for     robot pose and laser scan data
 
 
 %% Set the ROS domain ID for communication
@@ -19,6 +19,7 @@ controlNode = ros2node('/base_station');
 while true
     try
     scanSub = ros2subscriber(controlNode, '/scan', {}, 'Reliability', 'besteffort'); % laser scan topic
+    odomSub = ros2subscriber(controlNode, '/odom', 'nav_msgs/Odometry', 'Reliability', 'besteffort');
     break
 
     catch
@@ -37,7 +38,13 @@ try
     %% Define publishers
     cmdPub = ros2publisher(controlNode, '/cmd_vel', 'geometry_msgs/Twist');
 
-    slamAlg = explore(scanSub,cmdPub);
+    if isfile('explored_map.mat')
+        load('explored_map.mat', 'occ_matrix', 'resolution', 'grid_location', 'slamAlg');
+        map = occupancyMap(occ_matrix, resolution);
+        map.GridLocationInWorld = grid_location;
+    else
+        slamAlg = explore(scanSub,cmdPub,odomSub);
+    end
 
     points = plot_and_box(slamAlg)
 
