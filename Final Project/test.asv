@@ -1,0 +1,88 @@
+ros2 topic list
+setenv('ROS_DOMAIN_ID', '30')
+
+%% Create a ROS2 node for communication
+controlNode = ros2node('/base_station');
+
+try
+    while true
+        try
+       
+        %Define publishers
+        cmdPub = ros2publisher(controlNode, '/cmd_vel', 'geometry_msgs/Twist');
+        
+        break
+    
+        catch
+            disp("fail")
+        end
+    
+    end
+
+    Detects = [];
+
+    cmdMsg = ros2message('geometry_msgs/Twist');
+    cmdMsg.angular.z = -0.5; % 0.5
+    send(cmdPub,cmdMsg)
+    prev_found_circle = false;
+    while true
+
+        circle = detectCircle(0.7);
+        sum = 0;
+        Detects(end+1) = circle.found;
+        if(size(Detects)> 10)
+            recent = Detects((end-10):end);
+
+            for i=recent
+                if(i)
+                else
+                end
+                sum = sum + i;
+            end
+        end
+
+        if (circle.found)
+            if(~prev_found_circle)
+            cmdMsg.angular.z = -0.075; % -0.075
+            send(cmdPub,cmdMsg)
+
+            end
+            if(sum > 5)
+                disp("circle identified")
+                circle.angle_error
+                circle.distance
+                prev_found_circle = true;
+            end
+   
+            continue
+        end
+
+
+        if(~circle.found)
+            if(prev_found_circle)
+               
+            cmdMsg.angular.z = -0.5; % -0.5
+            send(cmdPub,cmdMsg)
+            end
+        end
+
+        %pause(0.1)
+        prev_found_circle = false;
+    end
+
+catch ME
+    %% Catching potential errors
+    % Stop the robot
+    cmdMsg = ros2message('geometry_msgs/Twist');
+    cmdMsg.Linear.x = 0;
+    cmdMsg.Angular.z = 0;
+    send(cmdPub, cmdMsg);
+
+    % Clean up ROS subscriptions
+    clear scanSub
+
+    % Show the error
+    if ~strcmp(ME.identifier, 'NonExeption:EndProgram')
+        rethrow(ME)
+    end
+end

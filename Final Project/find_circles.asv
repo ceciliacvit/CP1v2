@@ -5,7 +5,6 @@ function find_circles(scanSub,cmdPub)
 
     cmdMsg = ros2message('geometry_msgs/Twist');
     cmdMsg.angular.z = -run_speed; % 0.5
-    pause(1.0)
     send(cmdPub,cmdMsg)
 
     circles = [];
@@ -40,7 +39,7 @@ function find_circles(scanSub,cmdPub)
                 end
             end
         end
-
+        
         if(circle.found)
             if(circle.color == "blue")
                 if(blue_circle_found)
@@ -90,7 +89,7 @@ function find_circles(scanSub,cmdPub)
             end
             cmdMsg.angular.z = -run_speed;
             send(cmdPub,cmdMsg);
-            continue
+
 
         end
 
@@ -102,12 +101,8 @@ function find_circles(scanSub,cmdPub)
             end
         end
 
-
         prev_found_circle = false;
 
-        if(blue_circle_found && orange_circle_found)
-        running = false;
-        end
         pause(0.01);
     end
     

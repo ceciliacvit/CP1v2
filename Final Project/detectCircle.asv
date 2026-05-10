@@ -35,7 +35,6 @@ end
     [centers, radii] = imfindcircles(mask, [25 600], 'Sensitivity',sensitivity, 'ObjectPolarity', 'bright');
 
     circle.found = false;
-    circle.color = "";
     if ~isempty(radii)
         cx = round(centers(1,1));
         cy = round(centers(1,2));
