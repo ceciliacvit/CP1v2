@@ -1,40 +1,52 @@
 function circle = detectCircle()
-% access to circle.found (bool), circle.distance (m), circle.angle_error (rad)
+% circle.found (bool), circle.distance (m), circle.angle_error (rad)
 
     global img
-    controlNode = ros2node('/base_station');
-    sub  = ros2subscriber(controlNode, '/camera/image_raw/compressed', @imageCallback); % image topic
-    % img  = rosReadImage(receive(sub, 5));
+    persistent controlNode sub figHandle
+
+    if isempty(controlNode)
+        img = [];
+        controlNode = ros2node('/base_station');
+        sub = ros2subscriber(controlNode, '/camera/image_raw/compressed', @imageCallback);
+        figHandle = figure;
+    end
+
+    img = [];  % clear stale image, wait for fresh frame
     while isempty(img)
         pause(0.01);
     end
 
-    cols = size(img, 2); % width of the image in pixels
-    R = img(:,:,1);
-    G = img(:,:,2);
-    B = img(:,:,3);
+    cols = size(img, 2);
+    hsv = rgb2hsv(img);
+    hue = hsv(:,:,1);
+    sat = hsv(:,:,2);
+    val = hsv(:,:,3);
 
-    is_orange = (R > 200) .* (G > 80)  .* (B < 80);
-    is_blue = (R < 100) .* (G < 150) .* (B > 150);
-    
-    mask = imopen(is_orange | is_blue, strel('disk', 3)); % remove small noise spots
-    mask = imclose(mask, strel('disk', 20)); % close small gaps
-    mask = imfill(mask, 'holes'); % fill holes inside the shape
+    is_orange = (hue > 0.02 & hue < 0.13) & sat > 0.5 & val > 0.1;
+    is_blue   = (hue > 0.55 & hue < 0.70) & sat > 0.5 & val > 0.1;
 
-    % try imfindellipses if this doesnt work off-angle
-    [centers, radii] = imfindcircles(mask, [20 600], 'Sensitivity', 0.99, 'ObjectPolarity', 'bright');
+    mask = imopen(is_orange | is_blue, strel('disk', 3));
+    mask = imclose(mask, strel('disk', 20));
+    mask = imfill(mask, 'holes');
+
+    [centers, radii] = imfindcircles(mask, [25 600], 'Sensitivity', 0.90, 'ObjectPolarity', 'bright');
 
     circle.found = false;
-    if isempty(radii)
-        return; % no circle found, return
+    if ~isempty(radii)
+        circle.found = true;
+        circle.angle_error = -atan2(centers(1,1) - cols/2, 1266);
+        circle.distance    = 1266 * 0.08 / (2 * radii(1));
+        annotated = insertShape(img, 'Circle', [centers(1,1), centers(1,2), radii(1)], 'Color', 'green', 'LineWidth', 5);
+    else
+        annotated = img;
     end
 
-    cx = centers(1,1);
-    r  = radii(1);
-
-    circle.found = true;
-    circle.angle_error = -atan2(cx - cols/2, 1266); % negative because of flipped input image
-    circle.distance = 1266 * 0.10 / (2 * r);
+    if isempty(figHandle) || ~isvalid(figHandle)
+        figHandle = figure;
+    end
+    figure(figHandle);
+    imshow(rot90(annotated, 2));
+    drawnow;
 end
 
 
@@ -45,9 +57,6 @@ end
 % which should take us to a point 1m in front of the circle
 
 function imageCallback(message)
-    % Use global variable to store laser scan data
     global img
-
-    % Save the laser scan message
     img = rosReadImage(message);
 end
