@@ -138,7 +138,7 @@ while drive
     if use_slam
         dist_moved  = norm(position - last_scan_position);
         angle_moved = abs(wrapToPi(angle - last_scan_angle));
-        if dist_moved > 0.05 || angle_moved > 0.1
+        if dist_moved > 0.05 || angle_moved > 0.1 || isempty(path)
             d_odom  = curr_odom_pos - odom_anchor_pos;
             d_theta = wrapToPi(curr_odom_angle - odom_anchor_angle);
             c = cos(odom_anchor_angle); s = sin(odom_anchor_angle);
