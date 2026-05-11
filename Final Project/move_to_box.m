@@ -1,4 +1,4 @@
-function slamAlg = move_to_box(scanSub,cmdPub,box,slamAlg)
+function slamAlg = move_to_box(scanSub,odomSub,cmdPub,box,slamAlg)
 'botox started'
 maxLidarRange = 8;
 mapResolution = 20;
@@ -39,7 +39,7 @@ while true
     path
     % Plot path
        
-    [slamAlg,fail] = MoveRobot(path,slamAlg,scanSub,cmdPub,figure1,0.8);
+    [slamAlg,fail] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,0.8);
     
     hold off;
     drawnow;

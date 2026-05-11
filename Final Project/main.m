@@ -49,7 +49,7 @@ try
     points = plot_and_box(slamAlg)
 
     %% move to B
-    move_to_box(scanSub,cmdPub,points(1:4,:),slamAlg);
+    move_to_box(scanSub,odomSub,cmdPub,points(1:4,:),slamAlg);
 
     %% find circles
     find_circles(scanSub,cmdPub);

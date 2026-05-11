@@ -237,7 +237,7 @@ while drive
     [cmdMsg.angular.z,headingErrorInt,headingErrorPrev,~] = look_at(angle,desired_heading,headingErrorInt,headingErrorPrev);
     cmdMsg.linear.x  = clip(linearVelocity,  -0.4, 0.4);
 
-    % send(cmdPub, cmdMsg);
+    send(cmdPub, cmdMsg);
 end
 
 stop_robot(cmdPub);
