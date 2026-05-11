@@ -1,53 +1,48 @@
-function slamAlg = move_to_box(scanSub,odomSub,cmdPub,box,slamAlg)
+function slamAlg = move_to_box(scanSub,odomSub,cmdPub,box,slamAlg,initialPose)
+    arguments
+        scanSub
+        odomSub
+        cmdPub
+        box
+        slamAlg
+        initialPose = []
+    end
 'botox started'
 maxLidarRange = 8;
 mapResolution = 20;
 global visualise
 visualise=TurtleBotVisualise();
 figure1 = figure;
-figure2 = figure;
-path=[0,0];
-target = [0,0];
-i = 0;
-initialized=false;
+
+% Starting position: use MCL result when provided (loaded map case),
+% otherwise trust the last SLAM pose from exploration.
+[scans, optimizedPoses] = scansAndPoses(slamAlg);
+map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+if ~isempty(initialPose)
+    position = initialPose(1:2);
+else
+    position = optimizedPoses(end,1:2);
+end
 
 while true
-    scan = receive(scanSub);
-    try % catch if scan is empty
-        lidarScan=rosReadLidarScan(scan);
-    catch
-        continue;
-    end    
-
-    addScan(slamAlg, lidarScan);
-    
-    %create map
-    [scans, optimizedPoses]  = scansAndPoses(slamAlg);
-    map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
-    
-    position = optimizedPoses(end,1:2);
-
-    %plot map
-    plot_all(figure1,map,optimizedPoses);
-    
-
-    grid_pos = world2grid(map,position);
-
     target = findNextTarget(box);
-    
+
     path = createPath(position,target,map);
     path
-    % Plot path
-       
+
     [slamAlg,fail] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,0.8);
-    
-    hold off;
+
+    % MoveRobot has updated slamAlg — get fresh position and map from it.
+    [scans, optimizedPoses] = scansAndPoses(slamAlg);
+    map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+    position = optimizedPoses(end,1:2);
+
+    plot_all(figure1,map,optimizedPoses);
     drawnow;
-    i = i+1;
-
 end
 
 end
+
 
 function target = findNextTarget(box)
     box

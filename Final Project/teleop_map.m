@@ -109,15 +109,15 @@ end
         else
             curr_yaw_abs = quat_to_yaw(odom_msg.pose.pose.orientation);
         end
-        curr_yaw = atan2(sin(curr_yaw_abs - yaw_origin), cos(curr_yaw_abs - yaw_origin));
+        curr_yaw = wrapToPi(curr_yaw_abs - yaw_origin);
 
         d_pos = norm(curr_odom_pos - last_odom_pos);
-        d_rot = abs(atan2(sin(curr_yaw - last_yaw), cos(curr_yaw - last_yaw)));
+        d_rot = abs(wrapToPi(curr_yaw - last_yaw));
 
         % Add a scan on first frame, or once motion exceeds the gate
         if first_scan || d_pos > scan_spacing || d_rot > rotation_gate
             d_odom = curr_odom_pos - last_odom_pos;
-            d_theta = atan2(sin(curr_yaw - last_yaw), cos(curr_yaw - last_yaw));
+            d_theta = wrapToPi(curr_yaw - last_yaw);
             c = cos(last_yaw); s = sin(last_yaw);
             relPoseEst = [c*d_odom(1)+s*d_odom(2), -s*d_odom(1)+c*d_odom(2), d_theta];
             addScan(slamAlg, lidarScan, relPoseEst);
@@ -168,5 +168,6 @@ end
 end
 
 function yaw = quat_to_yaw(q)
-    yaw = atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y^2 + q.z^2));
+    eul = quat2eul([q.w, q.x, q.y, q.z]);
+    yaw = eul(1);
 end

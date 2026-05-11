@@ -27,11 +27,6 @@ while true
 
 end
 
-fig2 = figure;
-ax2 = axes(fig2);
-
-fig3 = figure;
-ax3 = axes(fig3);
 
 
 try
@@ -42,20 +37,22 @@ try
         load('explored_map.mat', 'occ_matrix', 'resolution', 'grid_location', 'slamAlg');
         map = occupancyMap(occ_matrix, resolution);
         map.GridLocationInWorld = grid_location;
+        initialPose = localize_robot(map, scanSub, odomSub, cmdPub);
     else
         slamAlg = explore(scanSub,cmdPub,odomSub);
+        initialPose = [];
     end
 
     points = plot_and_box(slamAlg)
 
     %% move to B
-    move_to_box(scanSub,odomSub,cmdPub,points(1:4,:),slamAlg);
+    move_to_box(scanSub,odomSub,cmdPub,points(1:4,:),slamAlg,initialPose);
 
     %% find circles
     find_circles(scanSub,cmdPub);
 
     %% move to C
-    move_to_box(scanSub,cmdPub, points(5:end,:),slamAlg);
+    move_to_box(scanSub,odomSub,cmdPub,points(5:end,:),slamAlg,initialPose);
 catch ME
     %% Catching potential errors
     % Stop the robot

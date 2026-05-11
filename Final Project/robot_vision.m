@@ -147,8 +147,8 @@ try
     
         %% Publish velocity commands
         cmdMsg = ros2message('geometry_msgs/Twist');
-        cmdMsg.linear.x = clip(linearVelocity, -0.1, 0.1);
-        cmdMsg.angular.z = clip(angularVelocity, -1.0, 1.0);
+        cmdMsg.linear.x = max(min(linearVelocity, 0.1), -0.1);
+        cmdMsg.angular.z = max(min(angularVelocity, 1.0), -1.0);
         % send(cmdPub, cmdMsg);
     
         %% Pause to visualize and delete old plots

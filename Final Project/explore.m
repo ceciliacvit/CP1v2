@@ -48,7 +48,7 @@ while true
             curr_odom_pos   = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
             curr_odom_angle = quat_to_yaw(odom_msg.pose.pose.orientation);
             d_odom  = curr_odom_pos - last_odom_pos;
-            d_theta = atan2(sin(curr_odom_angle - last_odom_angle), cos(curr_odom_angle - last_odom_angle));
+            d_theta = wrapToPi(curr_odom_angle - last_odom_angle);
             c = cos(last_odom_angle); s = sin(last_odom_angle);
             relPoseEst = [c*d_odom(1)+s*d_odom(2), -s*d_odom(1)+c*d_odom(2), d_theta];
             addScan(slamAlg, lidarScan, relPoseEst);
@@ -152,8 +152,8 @@ function target = findNextTarget(map, grid_pos,fig,duds)
     
     for i = 1:size(duds,1)
         dud = duds(i,:);
-        duds
-        dud
+        duds;
+        dud;
 
         D = sqrt((X - dud(1)).^2 + (Y - dud(2)).^2);
         mask = D > radius;
@@ -199,5 +199,6 @@ function M = radialLinearMatrix(size, grid_pos,minVal)
 end
 
 function yaw = quat_to_yaw(q)
-    yaw = atan2(2*(q.w*q.z + q.x*q.y), 1 - 2*(q.y^2 + q.z^2));
+    eul = quat2eul([q.w, q.x, q.y, q.z]);
+    yaw = eul(1);
 end

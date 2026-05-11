@@ -1,10 +1,13 @@
-function is_valid = validate_path(path,map)
-    mapCopy = copy(map);
-    path = world2grid(mapCopy,path);
-    updateOccupancy(mapCopy,max(checkOccupancy(mapCopy),0));
-    % inflate(map,5);
-    show(mapCopy);
+function is_valid = validate_path(path, map)
+    sv = validatorOccupancyMap;
+    sv.Map = map;
+    sv.ValidationDistance = 0.05;
 
-    min_value = min(improfile(mapCopy.occupancyMatrix,path(:,1),path(:,2),"nearest"));
-    is_valid = min_value < 0.5;
+    is_valid = true;
+    for i = 1:size(path,1)-1
+        if ~isMotionValid(sv, [path(i,:), 0], [path(i+1,:), 0])
+            is_valid = false;
+            return;
+        end
+    end
 end
