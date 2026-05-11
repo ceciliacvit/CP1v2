@@ -54,6 +54,8 @@ try
     %% find circles
     find_circles(scanSub,cmdPub);
 
+    %% move to C
+    move_to_box(scanSub,cmdPub, points(5:end,:),slamAlg);
 catch ME
     %% Catching potential errors
     % Stop the robot
