@@ -1,17 +1,25 @@
-function find_circles(scanSub, cmdPub)
+function find_circles(scanSub, cmdPub, slamAlg, current_pose)
 
     scan = receive(scanSub);
     try
     lidarScan = rosReadLidarScan(scan);
-    addScan(slamAlg, lidarScan);
+    if nargin < 4 || isempty(current_pose)
+        addScan(slamAlg, lidarScan);
+    end
     catch
     end
 
-    [scans, optimizedPoses] = scansAndPoses(slamAlg);
-    map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
-    
-    position = optimizedPoses(end,1:2);
-    angle    = optimizedPoses(end,3);
+    maxLidarRange = 8;
+    mapResolution = 20;
+
+    if nargin < 4 || isempty(current_pose)
+        [scans, optimizedPoses] = scansAndPoses(slamAlg);
+        position = optimizedPoses(end,1:2);
+        angle    = optimizedPoses(end,3);
+    else
+        position = current_pose(1:2);
+        angle    = current_pose(3);
+    end
 
     global run_speed
     run_speed = 0.3;

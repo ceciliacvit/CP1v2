@@ -43,16 +43,16 @@ try
         initialPose = [];
     end
 
-    points = plot_and_box(slamAlg)
+    points = plot_and_point(slamAlg)
 
     %% move to B
-    move_to_box(scanSub,odomSub,cmdPub,points(1:4,:),slamAlg,initialPose);
+    final_pose_B = move_to_point(scanSub,odomSub,cmdPub,points(1,:),slamAlg,initialPose);
 
     %% find circles
-    find_circles(scanSub,cmdPub);
+    %find_circles(scanSub,cmdPub,slamAlg, final_pose_B);
 
     %% move to C
-    move_to_box(scanSub,odomSub,cmdPub,points(5:end,:),slamAlg,initialPose);
+    move_to_point(scanSub,odomSub,cmdPub,points(2,:),slamAlg,final_pose_B);
 catch ME
     %% Catching potential errors
     % Stop the robot
