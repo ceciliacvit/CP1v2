@@ -74,7 +74,14 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
     global slowing
     slowing = false;
 
-    while ~(blue_circle_found && orange_circle_found)
+    % One spin per find_circles call. Track cumulative rotation via odom yaw
+    % so the function returns after ~360 degrees regardless of how many
+    % circles were found — the next 20cm chunk gets a fresh vantage point.
+    last_yaw = read_yaw(odomSub);
+    total_rotation = 0;
+    full_rotation  = 2*pi;
+
+    while ~(blue_circle_found && orange_circle_found) && total_rotation < full_rotation
         circle = detectCircle(0.75);
         detect_idx = mod(detect_idx, 10) + 1;
         Detects(detect_idx) = circle.found;
@@ -82,14 +89,24 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
 
         % Slow down on first sight, speed back up when lost
         if circle.found && ~slowing
-            cmdMsg.angular.z = -scan_speed;
-            send(cmdPub, cmdMsg);
             slowing = true;
         elseif ~circle.found && slowing
-            cmdMsg.angular.z = -run_speed;
-            send(cmdPub, cmdMsg);
             slowing = false;
         end
+        if slowing
+            cmdMsg.angular.z = -scan_speed;
+        else
+            cmdMsg.angular.z = -run_speed;
+        end
+        cmdMsg.linear.x = 0;
+        send(cmdPub, cmdMsg);  % republish every iter so cmd_vel watchdog doesn't stop the motors
+
+        % Accumulate rotation from odom yaw deltas.
+        curr_yaw = read_yaw(odomSub);
+        if ~isnan(curr_yaw) && ~isnan(last_yaw)
+            total_rotation = total_rotation + abs(wrapToPi(curr_yaw - last_yaw));
+        end
+        last_yaw = curr_yaw;
 
         % Not confirmed by enough recent frames, or color already found
         if recent_sum <= 3
