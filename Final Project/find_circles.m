@@ -53,7 +53,7 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
     end
 
     global run_speed
-    run_speed = 0.3;
+    run_speed = 0.5;
     global scan_speed
     scan_speed = 0.05;
 

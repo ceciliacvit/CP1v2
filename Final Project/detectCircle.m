@@ -7,10 +7,20 @@ end
     global img
     persistent controlNode sub figHandle
 
+    %controlNode = ros2node('/base_station');
+
     if isempty(controlNode)
         img = [];
         controlNode = ros2node('/base_station');
-        sub = ros2subscriber(controlNode, '/camera/image_raw/compressed', @imageCallback);
+        while true
+            try
+                sub = ros2subscriber(controlNode, '/camera/image_raw/compressed', @imageCallback);
+                break;
+            catch
+                disp('Waiting for /camera/image_raw/compressed topic...');
+                pause(1.0);
+            end
+        end
         figHandle = figure;
     end
 
