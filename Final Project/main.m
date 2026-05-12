@@ -55,9 +55,12 @@ try
         scanSub,odomSub,cmdPub,points(1,:),slamAlg,initialPose,mcl_history,circle_state,false);
 
     %% Re-localize at B1 (MCL mode only). A->B1 was pure dead-reckoning, so
-    % correct accumulated drift before starting the scan leg.
+    % correct accumulated drift, then drive from the true pose to actual B1
+    % before starting the scan leg.
     if isfile('explored_map.mat')
         final_pose_B1 = localize_robot(map, scanSub, odomSub, cmdPub, final_pose_B1);
+        [final_pose_B1, mcl_history, circle_state] = move_to_point( ...
+            scanSub,odomSub,cmdPub,points(1,:),slamAlg,final_pose_B1,mcl_history,circle_state,false);
     end
 
     %% move to B2 (circle scanning enabled on this leg only)
