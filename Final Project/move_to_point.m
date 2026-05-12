@@ -91,10 +91,6 @@ while true
             end
         end
 
-        % Face the target before the next chunk so pure pursuit starts pointed
-        % forward — avoids cumulative angular drift from each 360° spin.
-        current_pose = face_target(current_pose, target, cmdPub, odomSub);
-
         % Loop continues, next iteration replans toward target and drives
         % another 20cm chunk.
         continue;
