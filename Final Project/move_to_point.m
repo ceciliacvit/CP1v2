@@ -51,6 +51,14 @@ while true
 
     refresh_map_and_plot();
 
+    % Recovery: if MoveRobot bailed out (stuck or its path went invalid), the
+    % believed pose is likely wrong (e.g. inside a wall). Re-run MCL before
+    % replanning so the next path starts from a corrected pose.
+    if fail && ~use_slam
+        'fail detected — running MCL to re-localize'
+        current_pose = localize_robot(map, scanSub, odomSub, cmdPub, current_pose);
+    end
+
     if circle_scan_needed
         pre_scan_pose = current_pose;
 
