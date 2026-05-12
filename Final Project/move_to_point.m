@@ -32,18 +32,13 @@ base_poses = optimizedPoses;
 if ~isempty(initialPose)
     current_pose = initialPose;
     use_slam = false;
-    if ~isempty(mcl_history.poses)
-        map = buildMap([base_scans(:); mcl_history.scans(:)], ...
-                       [base_poses;     mcl_history.poses], ...
-                       mapResolution, maxLidarRange);
-    else
-        map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
-    end
 else
     current_pose = optimizedPoses(end,:);
     use_slam = true;
-    map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 end
+% Map is static in MCL mode (loaded map is the source of truth) and is
+% rebuilt only from slamAlg in SLAM mode.
+map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 
 while true
     path = createPath(current_pose(1:2),target,map);
@@ -101,11 +96,8 @@ close(figure1);
             map = buildMap(scans_local, poses_local, mapResolution, maxLidarRange);
             plot_all(figure1, map, poses_local);
         else
-            % Rebuild from base + MCL trajectory so plotting/validation reflect actual driven path.
+            % Map stays at the loaded base map; only the trajectory updates.
             if ~isempty(mcl_history.poses)
-                map = buildMap([base_scans(:); mcl_history.scans(:)], ...
-                               [base_poses;     mcl_history.poses], ...
-                               mapResolution, maxLidarRange);
                 plot_all(figure1, map, [base_poses; mcl_history.poses]);
             else
                 plot_all(figure1, map, current_pose);

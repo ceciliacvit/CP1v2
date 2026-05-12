@@ -67,13 +67,9 @@ scan = receive(scanSub);
 base_scans = scans;
 base_poses = optimizedPoses;
 
-if ~use_slam && ~isempty(mcl_history.poses)
-    map = buildMap([base_scans(:); mcl_history.scans(:)], ...
-                   [base_poses;     mcl_history.poses], ...
-                   mapResolution, maxLidarRange);
-else
-    map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
-end
+% Map is static in MCL mode (loaded map is the source of truth) and grows
+% only in SLAM mode via the addScan branch below.
+map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 map_rebuild_counter = 0;
 
 if use_slam
@@ -99,12 +95,18 @@ else
     mcl.GlobalLocalization = false;
     mcl.InitialPose = current_pose;
     mcl.InitialCovariance = diag([0.05, 0.05, 0.05]);
-    mcl.ParticleLimits = [100, 1000];
-    mcl.UpdateThresholds = [0.05, 0.05, 0.05];
+    mcl.ParticleLimits = [50, 300];
+    mcl.UpdateThresholds = [0.10, 0.10, 0.10];
     mcl.ResamplingInterval = 1;
     mcl.SensorModel.Map = map;
     mcl.SensorModel.SensorLimits = [0.1, 8];
+    mcl.SensorModel.NumBeams = 60;
     mcl.MotionModel.Noise = [0.05 0.05 0.05 0.05];
+
+    % Throttle MCL so the motor control loop isn't blocked every iteration.
+    mcl_period   = 30;       % seconds between MCL updates
+    mcl_timer    = tic;
+    mcl_first    = true;     % force one MCL call on the first iteration so particles anchor
 end
 
 last_scan_position = position;
@@ -186,9 +188,20 @@ while drive
             odom_anchor_angle = curr_odom_angle;
         end
     else
-        % Continuous MCL tracking to correct odometry drift
-        cleanScan = removeInvalidData(lidarScan, 'RangeLimits', [0.1, 8]);
-        [isUpdated, mclPose, ~] = step(mcl, [curr_odom_pos, curr_odom_angle], cleanScan);
+        % Throttled MCL tracking — only run step() on the first iteration and
+        % then every mcl_period seconds. Between calls the motor loop runs at
+        % full rate using odom dead-reckoning (handled above).
+        run_mcl = mcl_first || toc(mcl_timer) >= mcl_period;
+        isUpdated = false;
+        if run_mcl
+            % Stop the robot before running MCL — step() can take 100s of ms
+            % and the robot would otherwise drive blind through that window.
+            stop_robot(cmdPub);
+            cleanScan = removeInvalidData(lidarScan, 'RangeLimits', [0.1, 8]);
+            [isUpdated, mclPose, ~] = step(mcl, [curr_odom_pos, curr_odom_angle], cleanScan);
+            mcl_timer = tic;
+            mcl_first = false;
+        end
         if isUpdated
             position = mclPose(1:2);
             angle = mclPose(3);
@@ -199,8 +212,10 @@ while drive
             odom_anchor_pos   = curr_odom_pos;
             odom_anchor_angle = curr_odom_angle;
 
-            % Append to parallel trajectory when robot has moved enough,
-            % mirroring the SLAM-mode gate so the map grows at the same rate.
+            % Append corrected pose to the parallel trajectory for plotting.
+            % We do NOT rebuild the map here — the loaded base map is the
+            % source of truth in MCL mode; adding dead-reckoned scans would
+            % bake drift / dynamic obstacles into the planner map.
             dist_moved  = norm(position - last_scan_position);
             angle_moved = abs(wrapToPi(angle - last_scan_angle));
             if isempty(mcl_history.poses) || dist_moved > 0.05 || angle_moved > 0.1
@@ -208,14 +223,6 @@ while drive
                 mcl_history.poses(end+1,:) = [position, angle];
                 last_scan_position = position;
                 last_scan_angle    = angle;
-
-                map_rebuild_counter = map_rebuild_counter + 1;
-                if map_rebuild_counter >= map_rebuild_interval
-                    map = buildMap([base_scans(:); mcl_history.scans(:)], ...
-                                   [base_poses;     mcl_history.poses], ...
-                                   mapResolution, maxLidarRange);
-                    map_rebuild_counter = 0;
-                end
             end
         end
         if isempty(mcl_history.poses)
