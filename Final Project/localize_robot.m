@@ -1,35 +1,55 @@
-function pose = localize_robot(map, scanSub, odomSub, cmdPub)
+function pose = localize_robot(map, scanSub, odomSub, cmdPub, initial_pose)
 % Global relocalization using monteCarloLocalization.
 % Spins the robot until the particle filter converges, then returns
 % the estimated pose [x, y, theta] in the map (SLAM world) frame.
+%
+% If initial_pose is supplied (e.g. on re-localization at B1 from a dead-
+% reckoned estimate), skip the user-click step and seed MCL with it under
+% a generous covariance so the filter can recover from drift.
+arguments
+    map
+    scanSub
+    odomSub
+    cmdPub
+    initial_pose = []
+end
 
 mcl = monteCarloLocalization;
 mcl.UseLidarScan        = true;
 
-% Ask user for initial guess
-fig = figure('Name', 'MCL Initialization');
-show(map);
-title('Click 1) Robot position, 2) A point in front of the robot (Direction)');
-[x_clicks, y_clicks] = ginput(2);
-close(fig);
+if isempty(initial_pose)
+    % Ask user for initial guess
+    fig = figure('Name', 'MCL Initialization');
+    show(map);
+    title('Click 1) Robot position, 2) A point in front of the robot (Direction)');
+    [x_clicks, y_clicks] = ginput(2);
+    close(fig);
 
-x_guess = x_clicks(1);
-y_guess = y_clicks(1);
-theta_guess = atan2(y_clicks(2) - y_clicks(1), x_clicks(2) - x_clicks(1));
+    x_guess = x_clicks(1);
+    y_guess = y_clicks(1);
+    theta_guess = atan2(y_clicks(2) - y_clicks(1), x_clicks(2) - x_clicks(1));
+    initial_covariance = diag([0.25, 0.25, 0.25]);
+else
+    x_guess     = initial_pose(1);
+    y_guess     = initial_pose(2);
+    theta_guess = initial_pose(3);
+    % Generous covariance so the filter can recover if A->B1 dead-reckoning drifted.
+    initial_covariance = diag([0.5, 0.5, 0.25]);
+end
 
 mcl.GlobalLocalization  = false;
 mcl.InitialPose         = [x_guess, y_guess, theta_guess];
-mcl.InitialCovariance   = diag([0.25, 0.25, 0.25]);
+mcl.InitialCovariance   = initial_covariance;
 
-mcl.ParticleLimits      = [500, 5000];
+mcl.ParticleLimits      = [2000, 10000];
 mcl.UpdateThresholds    = [0.05, 0.05, 0.02];
 mcl.ResamplingInterval  = 1;
 mcl.SensorModel.Map          = map;
 mcl.SensorModel.SensorLimits = [0.1, 8];
-mcl.SensorModel.NumBeams     = 60;
+mcl.SensorModel.NumBeams     = 180;
 mcl.MotionModel.Noise        = [0.1 0.1 0.05 0.05];
 
-converge_threshold = 0.08;  % max xy std dev [m] to declare convergence
+converge_threshold = 0.03;  % max xy std dev [m] to declare convergence
 
 odom_msg = odomSub.LatestMessage;
 while isempty(odom_msg)

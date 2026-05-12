@@ -89,24 +89,8 @@ else
     else
         optimizedPoses = [base_poses; mcl_history.poses];
     end
-
-    mcl = monteCarloLocalization;
-    mcl.UseLidarScan = true;
-    mcl.GlobalLocalization = false;
-    mcl.InitialPose = current_pose;
-    mcl.InitialCovariance = diag([0.05, 0.05, 0.05]);
-    mcl.ParticleLimits = [50, 300];
-    mcl.UpdateThresholds = [0.10, 0.10, 0.10];
-    mcl.ResamplingInterval = 1;
-    mcl.SensorModel.Map = map;
-    mcl.SensorModel.SensorLimits = [0.1, 8];
-    mcl.SensorModel.NumBeams = 60;
-    mcl.MotionModel.Noise = [0.05 0.05 0.05 0.05];
-
-    % Throttle MCL so the motor control loop isn't blocked every iteration.
-    mcl_period   = 30;       % seconds between MCL updates
-    mcl_timer    = tic;
-    mcl_first    = true;     % force one MCL call on the first iteration so particles anchor
+    % No in-loop MCL: driving in MCL mode is pure dead-reckoning between
+    % external localize_robot calls (at start and on arrival at B1).
 end
 
 last_scan_position = position;
@@ -188,42 +172,16 @@ while drive
             odom_anchor_angle = curr_odom_angle;
         end
     else
-        % Throttled MCL tracking — only run step() on the first iteration and
-        % then every mcl_period seconds. Between calls the motor loop runs at
-        % full rate using odom dead-reckoning (handled above).
-        run_mcl = mcl_first || toc(mcl_timer) >= mcl_period;
-        isUpdated = false;
-        if run_mcl
-            % Stop the robot before running MCL — step() can take 100s of ms
-            % and the robot would otherwise drive blind through that window.
-            stop_robot(cmdPub);
-            cleanScan = removeInvalidData(lidarScan, 'RangeLimits', [0.1, 8]);
-            [isUpdated, mclPose, ~] = step(mcl, [curr_odom_pos, curr_odom_angle], cleanScan);
-            mcl_timer = tic;
-            mcl_first = false;
-        end
-        if isUpdated
-            position = mclPose(1:2);
-            angle = mclPose(3);
-
-            % Reset dead reckoning anchors to the new MCL pose
-            slam_anchor_pos   = position;
-            slam_anchor_angle = angle;
-            odom_anchor_pos   = curr_odom_pos;
-            odom_anchor_angle = curr_odom_angle;
-
-            % Append corrected pose to the parallel trajectory for plotting.
-            % We do NOT rebuild the map here — the loaded base map is the
-            % source of truth in MCL mode; adding dead-reckoned scans would
-            % bake drift / dynamic obstacles into the planner map.
-            dist_moved  = norm(position - last_scan_position);
-            angle_moved = abs(wrapToPi(angle - last_scan_angle));
-            if isempty(mcl_history.poses) || dist_moved > 0.05 || angle_moved > 0.1
-                mcl_history.scans{end+1}   = lidarScan;
-                mcl_history.poses(end+1,:) = [position, angle];
-                last_scan_position = position;
-                last_scan_angle    = angle;
-            end
+        % MCL mode: pure dead-reckoning during driving. Position/angle are
+        % updated by the odom block above. We just track the trajectory for
+        % plotting; no scan-matching corrections happen inside MoveRobot.
+        dist_moved  = norm(position - last_scan_position);
+        angle_moved = abs(wrapToPi(angle - last_scan_angle));
+        if isempty(mcl_history.poses) || dist_moved > 0.05 || angle_moved > 0.1
+            mcl_history.scans{end+1}   = lidarScan;
+            mcl_history.poses(end+1,:) = [position, angle];
+            last_scan_position = position;
+            last_scan_angle    = angle;
         end
         if isempty(mcl_history.poses)
             optimizedPoses = [position, angle];
