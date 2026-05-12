@@ -35,10 +35,10 @@ end
 map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 
 while true
-    % Only fire the 30cm circle-scan trigger if scanning is enabled AND
+    % Only fire the 50cm circle-scan trigger if scanning is enabled AND
     % we haven't found both circles yet.
     if scan_enabled && ~(circle_state.orange && circle_state.blue)
-        chunk_distance = 0.50;
+        chunk_distance = 0.75;
     else
         chunk_distance = Inf;
     end

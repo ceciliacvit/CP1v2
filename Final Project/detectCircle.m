@@ -40,7 +40,7 @@ end
     sat = hsv(:,:,2);
     val = hsv(:,:,3);
 
-    is_orange = (hue > 0.02 & hue < 0.13) & sat > 0.5 & val > 0.1;
+    is_orange = (hue > 0.00 & hue < 0.15) & sat > 0.5 & val > 0.1;
     is_blue   = (hue > 0.55 & hue < 0.70) & sat > 0.5 & val > 0.1;
 
     mask = imopen(is_orange | is_blue, strel('disk', 3));

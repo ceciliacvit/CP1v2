@@ -1,7 +1,7 @@
 function path = createPath(start, goal, map)
     mapCopy = copy(map);
     updateOccupancy(mapCopy, max(checkOccupancy(mapCopy), 0));
-    inflate(mapCopy, 0.15);
+    inflate(mapCopy, 0.3);
 
     goal  = nearest_free(goal,  mapCopy);
     start = nearest_free(start, mapCopy);

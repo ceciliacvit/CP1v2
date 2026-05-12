@@ -109,7 +109,7 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
         last_yaw = curr_yaw;
 
         % Not confirmed by enough recent frames, or color already found
-        if recent_sum <= 1
+        if recent_sum <= 2
             continue;
         end
         if circle.color == ""
@@ -126,20 +126,16 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
         send(cmdPub, cmdMsg);
         pause(0.4);
 
-        if circle.color == "orange"
-            orange_circle_found = true;
-            disp("orange found");
-        elseif circle.color == "blue"
-            blue_circle_found = true;
-            disp("blue found");
-        end
+        target_color = circle.color;
 
         % Approach until 0.9–1.1m away
         approach_timer = tic;
+        success = false;
         while true
             if toc(approach_timer) > 20
                 disp("Approach timed out.");
                 cmdMsg.linear.x = 0;
+                cmdMsg.angular.z = 0;
                 send(cmdPub, cmdMsg);
                 break;
             end
@@ -147,22 +143,40 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
             circle = detectCircle(0.8);
             if ~circle.found
                 cmdMsg.linear.x = 0;
+                cmdMsg.angular.z = 0;
                 send(cmdPub, cmdMsg);
                 continue;
             end
+            
+            % Realign the circle to the middle of the image
+            cmdMsg.angular.z = -0.5 * circle.angle_error;
+
             if circle.distance > 1.1
                 cmdMsg.linear.x = 0.05;
             elseif circle.distance < 0.9
                 cmdMsg.linear.x = -0.05;
             else
                 cmdMsg.linear.x = 0;
+                cmdMsg.angular.z = 0;
                 send(cmdPub, cmdMsg);
+                success = true;
                 break;
             end
             send(cmdPub, cmdMsg);
         end
 
-        captureImage();
+        if success
+            if target_color == "orange"
+                orange_circle_found = true;
+                disp("orange found");
+            elseif target_color == "blue"
+                blue_circle_found = true;
+                disp("blue found");
+            end
+            captureImage();
+        else
+            disp("Failed to reach circle, resuming search.");
+        end
         Detects = false(1, 10);  % reset so next circle starts fresh
         detect_idx = 0;
         slowing = false;
