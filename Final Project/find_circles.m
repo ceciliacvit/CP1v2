@@ -74,22 +74,75 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
     global slowing
     slowing = false;
 
-    global state;
-    state = "move";
-    current_angle = angle;
-
     while ~(blue_circle_found && orange_circle_found)
-        switch state
-            case "move"
-                cmdMsg.angular.z = 0;
-                send(cmdPub, cmdMsg);
-                
-                state = scan;
-            case "scan"
-                spin_and_scan(current_angle,angle)
-            otherwise
+        circle = detectCircle(0.75);
+        detect_idx = mod(detect_idx, 10) + 1;
+        Detects(detect_idx) = circle.found;
+        recent_sum = sum(Detects);
+
+        % Slow down on first sight, speed back up when lost
+        if circle.found && ~slowing
+            cmdMsg.angular.z = -scan_speed;
+            send(cmdPub, cmdMsg);
+            slowing = true;
+        elseif ~circle.found && slowing
+            cmdMsg.angular.z = -run_speed;
+            send(cmdPub, cmdMsg);
+            slowing = false;
         end
 
+        % Not confirmed by enough recent frames, or color already found
+        if recent_sum <= 3
+            continue;
+        end
+        if (circle.color == "orange" && orange_circle_found) || ...
+           (circle.color == "blue"   && blue_circle_found)
+            continue;
+        end
+
+        % Stop spinning
+        cmdMsg.angular.z = 0;
+        cmdMsg.linear.x  = 0;
+        send(cmdPub, cmdMsg);
+        pause(0.4);
+
+        if circle.color == "orange"
+            orange_circle_found = true;
+            disp("orange found");
+        elseif circle.color == "blue"
+            blue_circle_found = true;
+            disp("blue found");
+        end
+
+        % Approach until 0.9–1.1m away
+        while true
+            circle = detectCircle(0.7);
+            if ~circle.found
+                cmdMsg.linear.x = 0;
+                send(cmdPub, cmdMsg);
+                continue;
+            end
+            if circle.distance > 1.1
+                cmdMsg.linear.x = 0.05;
+            elseif circle.distance < 0.9
+                cmdMsg.linear.x = -0.05;
+            else
+                cmdMsg.linear.x = 0;
+                send(cmdPub, cmdMsg);
+                break;
+            end
+            send(cmdPub, cmdMsg);
+        end
+
+        captureImage();
+        Detects = false(1, 10);  % reset so next circle starts fresh
+        detect_idx = 0;
+        slowing = false;
+
+        % Resume spinning to look for the next color
+        cmdMsg.angular.z = -run_speed;
+        cmdMsg.linear.x  = 0;
+        send(cmdPub, cmdMsg);
     end
 
     % Final stop
@@ -118,83 +171,5 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
             final_pose = [new_xy, angle + wrapToPi(curr_odom_angle - odom_anchor_angle)];
         end
     end
-
-end
-
-function spin_and_scan(stop_angle,current_angle)
-
-    if(abs(current_angle-stop_angle)>= 360)
-        state = "move";
-    end
-    circle = detectCircle(0.75);
-    detect_idx = mod(detect_idx, 10) + 1;
-    Detects(detect_idx) = circle.found;
-    recent_sum = sum(Detects);
-
-    % Slow down on first sight, speed back up when lost
-    if circle.found && ~slowing
-        cmdMsg.angular.z = -scan_speed;
-        send(cmdPub, cmdMsg)
-        slowing = true;
-    elseif ~circle.found && slowing
-        cmdMsg.angular.z = -run_speed;
-        send(cmdPub, cmdMsg)
-        slowing = false;
-    end
-
-    
-
-    % Skip if not confirmed, or already found this color
-    if recent_sum <= 3
-        return
-    end
-    if (circle.color == "orange" && orange_circle_found) || ...
-       (circle.color == "blue"   && blue_circle_found)
-        return
-    end
-
-    % Stop
-    cmdMsg.angular.z = 0;
-    cmdMsg.linear.x  = 0;
-    send(cmdPub, cmdMsg)
-    pause(0.4)
-
-    if circle.color == "orange"
-        orange_circle_found = true;
-        disp("orange found")
-    elseif circle.color == "blue"
-        blue_circle_found = true;
-        disp("blue found")
-    end
-
-    % Approach until 1m away
-    while true
-        circle = detectCircle(0.7);
-        if ~circle.found
-            cmdMsg.linear.x = 0;
-            send(cmdPub, cmdMsg)
-            continue
-        end
-        if circle.distance > 1.1
-            cmdMsg.linear.x = 0.05;
-        elseif circle.distance < 0.9
-            cmdMsg.linear.x = -0.05;
-        else
-            cmdMsg.linear.x = 0;
-            send(cmdPub, cmdMsg)
-            break
-        end
-        send(cmdPub, cmdMsg)
-    end
-
-    captureImage();
-    Detects = false(1, 10);  % reset so next circle starts fresh
-    detect_idx = 0;
-    slowing = false;
-
-    % Resume spinning
-    cmdMsg.angular.z = -run_speed;
-    cmdMsg.linear.x  = 0;
-    send(cmdPub, cmdMsg)
 
 end
