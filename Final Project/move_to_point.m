@@ -41,7 +41,13 @@ end
 map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 
 while true
-    path = createPath(current_pose(1:2),target,map);
+    if scan_enabled
+        % B1->B2 leg only: straight line from current pose to target, no PRM.
+        % validate_path inside MoveRobot still checks the segment against the map.
+        path = [current_pose(1:2); target];
+    else
+        path = createPath(current_pose(1:2),target,map);
+    end
     path
 
     [slamAlg,fail,final_pose,mcl_history,circle_scan_needed] = MoveRobot( ...
@@ -84,6 +90,10 @@ while true
                 refresh_map_and_plot();
             end
         end
+
+        % Face the target before the next chunk so pure pursuit starts pointed
+        % forward — avoids cumulative angular drift from each 360° spin.
+        current_pose = face_target(current_pose, target, cmdPub, odomSub);
 
         % Loop continues, next iteration replans toward target and drives
         % another 20cm chunk.
