@@ -14,7 +14,8 @@ end
         controlNode = ros2node('/base_station');
         while true
             try
-                sub = ros2subscriber(controlNode, '/camera/image_raw/compressed', @imageCallback);
+                sub = ros2subscriber(controlNode, '/camera/image_raw/compressed', @imageCallback, ...
+                    'Reliability', 'besteffort');
                 break;
             catch
                 disp('Waiting for /camera/image_raw/compressed topic...');
