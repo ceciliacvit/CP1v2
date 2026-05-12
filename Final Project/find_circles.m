@@ -156,10 +156,13 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
         detect_idx = 0;
         slowing = false;
 
-        % Resume spinning to look for the next color
+        % Resume spinning to look for the next color. Reset the rotation
+        % counter so we still allow a full 360° from this new vantage.
         cmdMsg.angular.z = -run_speed;
         cmdMsg.linear.x  = 0;
         send(cmdPub, cmdMsg);
+        last_yaw = read_yaw(odomSub);
+        total_rotation = 0;
     end
 
     % Final stop
@@ -170,6 +173,11 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
     % Read back persistent flags into the return struct.
     circle_state.orange = orange_circle_found;
     circle_state.blue   = blue_circle_found;
+
+    % NB: rotation cap is reset after each circle approach (above), so
+    % find_circles still completes both circles in one call when both are
+    % visible from the same vantage. When only one is visible, the function
+    % returns after a single rotation so the caller can advance.
 
     % Estimate final pose by integrating odometry delta in the map frame.
     final_pose = [position, angle];
@@ -189,4 +197,19 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
         end
     end
 
+end
+
+
+function yaw = read_yaw(odomSub)
+    yaw = NaN;
+    if isempty(odomSub)
+        return;
+    end
+    odom_msg = odomSub.LatestMessage;
+    if isempty(odom_msg)
+        return;
+    end
+    eul = quat2eul([odom_msg.pose.pose.orientation.w, odom_msg.pose.pose.orientation.x, ...
+                    odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
+    yaw = eul(1);
 end
