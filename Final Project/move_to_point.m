@@ -13,7 +13,7 @@ function [final_pose, mcl_history, circle_state] = move_to_point(scanSub,odomSub
 
     % Only fire the 20cm circle-scan trigger on legs where scanning is enabled.
     if scan_enabled
-        chunk_distance = 0.20;
+        chunk_distance = 0.30;
     else
         chunk_distance = Inf;
     end
