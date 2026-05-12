@@ -4,18 +4,19 @@ arguments
 end
 % circle.found (bool), circle.distance (m), circle.angle_error (rad)
 
-    global img
-    persistent controlNode sub figHandle
+    global img new_image_available
+    persistent controlNode sub figHandle hImg
 
     %controlNode = ros2node('/base_station');
 
     if isempty(controlNode)
         img = [];
+        new_image_available = false;
         controlNode = ros2node('/base_station');
         while true
             try
                 sub = ros2subscriber(controlNode, '/camera/image_raw/compressed', @imageCallback, ...
-                    'Reliability', 'besteffort');
+                    'Reliability', 'besteffort', 'History', 'keeplast', 'Depth', 1);
                 break;
             catch
                 disp('Waiting for /camera/image_raw/compressed topic...');
@@ -23,15 +24,18 @@ end
             end
         end
         figHandle = figure;
+        hImg = [];
     end
 
-    img = [];  % clear stale image, wait for fresh frame
-    while isempty(img)
+    new_image_available = false;  % wait for fresh frame
+    while ~new_image_available || isempty(img)
         pause(0.01);
     end
 
-    cols = size(img, 2);
-    hsv = rgb2hsv(img);
+    current_img = img;
+
+    cols = size(current_img, 2);
+    hsv = rgb2hsv(current_img);
     hue = hsv(:,:,1);
     sat = hsv(:,:,2);
     val = hsv(:,:,3);
@@ -57,18 +61,25 @@ end
         end
         circle.found = true;
         circle.angle_error = -atan2(centers(1,1) - cols/2, 1266);
-        circle.distance    = 1266 * 0.08 / (2 * radii(1));
-        annotated = insertShape(img, 'Circle', [centers(1,1), centers(1,2), radii(1)], 'Color', 'green', 'LineWidth', 5);
+        circle.distance    = 1266 * 0.1 / (2 * radii(1));
+        annotated = insertShape(current_img, 'Circle', [centers(1,1), centers(1,2), radii(1)], 'Color', 'green', 'LineWidth', 5);
     else
-        annotated = img;
+        annotated = current_img;
     end
 
     if isempty(figHandle) || ~isvalid(figHandle)
         figHandle = figure;
+        hImg = [];
     end
-    figure(figHandle);
-    imshow(rot90(annotated, 2));
-    drawnow;
+    
+    rotated_image = rot90(annotated, 2);
+    if isempty(hImg) || ~isvalid(hImg)
+        figure(figHandle);
+        hImg = imshow(rotated_image);
+    else
+        set(hImg, 'CData', rotated_image);
+    end
+    drawnow limitrate;
 end
 
 
@@ -79,6 +90,7 @@ end
 % which should take us to a point 1m in front of the circle
 
 function imageCallback(message)
-    global img
+    global img new_image_available
     img = rosReadImage(message);
+    new_image_available = true;
 end

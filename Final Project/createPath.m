@@ -11,7 +11,8 @@ function path = createPath(start, goal, map)
         return;
     end
 
-    prm = mobileRobotPRM(map, 1000);
+    prm = mobileRobotPRM(map, 500);
+    prm.ConnectionDistance = 5;
     try
         path = prm.findpath(start, goal);
     catch

@@ -53,7 +53,7 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
     end
 
     global run_speed
-    run_speed = 0.5;
+    run_speed = 0.3;
     global scan_speed
     scan_speed = 0.05;
 
@@ -64,7 +64,7 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
     send(cmdPub, cmdMsg)
 
     global Detects
-    Detects = false(1, 10);
+    Detects = false(1, 3);
     global detect_idx
     detect_idx = 0;
     global orange_circle_found
@@ -82,8 +82,8 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
     full_rotation  = 2*pi;
 
     while ~(blue_circle_found && orange_circle_found) && total_rotation < full_rotation
-        circle = detectCircle(0.75);
-        detect_idx = mod(detect_idx, 10) + 1;
+        circle = detectCircle(0.9);
+        detect_idx = mod(detect_idx, 3) + 1;
         Detects(detect_idx) = circle.found;
         recent_sum = sum(Detects);
 
@@ -112,6 +112,9 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
         if recent_sum <= 3
             continue;
         end
+        if circle.color == ""
+            continue;
+        end
         if (circle.color == "orange" && orange_circle_found) || ...
            (circle.color == "blue"   && blue_circle_found)
             continue;
@@ -132,7 +135,15 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
         end
 
         % Approach until 0.9–1.1m away
+        approach_timer = tic;
         while true
+            if toc(approach_timer) > 20
+                disp("Approach timed out.");
+                cmdMsg.linear.x = 0;
+                send(cmdPub, cmdMsg);
+                break;
+            end
+            
             circle = detectCircle(0.7);
             if ~circle.found
                 cmdMsg.linear.x = 0;

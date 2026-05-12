@@ -11,12 +11,6 @@ function [final_pose, mcl_history, circle_state] = move_to_point(scanSub,odomSub
         scan_enabled = false
     end
 
-    % Only fire the 20cm circle-scan trigger on legs where scanning is enabled.
-    if scan_enabled
-        chunk_distance = 0.30;
-    else
-        chunk_distance = Inf;
-    end
 'move_to_point started'
 maxLidarRange = 8;
 mapResolution = 20;
@@ -41,6 +35,14 @@ end
 map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 
 while true
+    % Only fire the 30cm circle-scan trigger if scanning is enabled AND
+    % we haven't found both circles yet.
+    if scan_enabled && ~(circle_state.orange && circle_state.blue)
+        chunk_distance = 0.50;
+    else
+        chunk_distance = Inf;
+    end
+
     if scan_enabled
         % B1->B2 leg only: straight line from current pose to target, no PRM.
         % validate_path inside MoveRobot still checks the segment against the map.

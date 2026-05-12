@@ -41,7 +41,7 @@ goal = path(max_index, :);
 controller = controllerPurePursuit;
 controller.LookaheadDistance     = 0.3;
 controller.MaxAngularVelocity    = 1.84;
-controller.DesiredLinearVelocity = 0.15;
+controller.DesiredLinearVelocity = 0.2;
 controller.Waypoints             = path(1:max_index, :);
 
 %% VFH controller
