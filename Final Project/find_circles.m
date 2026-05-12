@@ -82,7 +82,7 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
     full_rotation  = 2*pi;
 
     while ~(blue_circle_found && orange_circle_found) && total_rotation < full_rotation
-        circle = detectCircle(0.9);
+        circle = detectCircle(0.8);
         detect_idx = mod(detect_idx, 3) + 1;
         Detects(detect_idx) = circle.found;
         recent_sum = sum(Detects);
@@ -109,7 +109,7 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
         last_yaw = curr_yaw;
 
         % Not confirmed by enough recent frames, or color already found
-        if recent_sum <= 3
+        if recent_sum <= 1
             continue;
         end
         if circle.color == ""
@@ -144,7 +144,7 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
                 break;
             end
             
-            circle = detectCircle(0.7);
+            circle = detectCircle(0.8);
             if ~circle.found
                 cmdMsg.linear.x = 0;
                 send(cmdPub, cmdMsg);
