@@ -1,4 +1,4 @@
-function [updated_slam, fail, final_pose] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,percentage_threshold,tolerance,current_pose,use_slam)
+function [updated_slam, fail, final_pose, mcl_history, circle_scan_needed] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,percentage_threshold,tolerance,current_pose,use_slam,mcl_history,max_distance)
     arguments
         path;
         slamAlg;
@@ -10,6 +10,14 @@ function [updated_slam, fail, final_pose] = MoveRobot(path,slamAlg,scanSub,odomS
         tolerance = 0.20;
         current_pose = [];
         use_slam = true;
+        mcl_history = struct('scans', {{}}, 'poses', zeros(0,3));
+        max_distance = Inf;
+    end
+
+    circle_scan_needed = false;
+
+    if ~isstruct(mcl_history) || ~isfield(mcl_history,'scans') || ~isfield(mcl_history,'poses')
+        mcl_history = struct('scans', {{}}, 'poses', zeros(0,3));
     end
 
 maxLidarRange = 8;
@@ -40,7 +48,7 @@ controller.Waypoints             = path(1:max_index, :);
 vfh = controllerVFH;
 vfh.UseLidarScan = true;
 vfh.RobotRadius = 0.15;
-vfh.SafetyDistance = 0.15;
+vfh.SafetyDistance = 0.05;
 vfh.DistanceLimits = [0.12 3];
 vfh.MinTurningRadius = 0.05;
 vfh.HistogramThresholds = [3 10];
@@ -49,12 +57,23 @@ patience = 5;
 time_not_moving = 0;
 prev_position = [0,0];
 prev_heading  = 0;
+cum_dist = 0;
+cum_dist_started = false;
 
 % Build initial map before entering the loop
 scan = receive(scanSub);
 
 [scans, optimizedPoses] = scansAndPoses(slamAlg);
-map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+base_scans = scans;
+base_poses = optimizedPoses;
+
+if ~use_slam && ~isempty(mcl_history.poses)
+    map = buildMap([base_scans(:); mcl_history.scans(:)], ...
+                   [base_poses;     mcl_history.poses], ...
+                   mapResolution, maxLidarRange);
+else
+    map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
+end
 map_rebuild_counter = 0;
 
 if use_slam
@@ -69,7 +88,11 @@ if use_slam
 else
     position = current_pose(1:2);
     angle = current_pose(3);
-    optimizedPoses = current_pose; % For plotting
+    if isempty(mcl_history.poses)
+        optimizedPoses = current_pose; % For plotting
+    else
+        optimizedPoses = [base_poses; mcl_history.poses];
+    end
 
     mcl = monteCarloLocalization;
     mcl.UseLidarScan = true;
@@ -169,14 +192,37 @@ while drive
         if isUpdated
             position = mclPose(1:2);
             angle = mclPose(3);
-            
+
             % Reset dead reckoning anchors to the new MCL pose
             slam_anchor_pos   = position;
             slam_anchor_angle = angle;
             odom_anchor_pos   = curr_odom_pos;
             odom_anchor_angle = curr_odom_angle;
+
+            % Append to parallel trajectory when robot has moved enough,
+            % mirroring the SLAM-mode gate so the map grows at the same rate.
+            dist_moved  = norm(position - last_scan_position);
+            angle_moved = abs(wrapToPi(angle - last_scan_angle));
+            if isempty(mcl_history.poses) || dist_moved > 0.05 || angle_moved > 0.1
+                mcl_history.scans{end+1}   = lidarScan;
+                mcl_history.poses(end+1,:) = [position, angle];
+                last_scan_position = position;
+                last_scan_angle    = angle;
+
+                map_rebuild_counter = map_rebuild_counter + 1;
+                if map_rebuild_counter >= map_rebuild_interval
+                    map = buildMap([base_scans(:); mcl_history.scans(:)], ...
+                                   [base_poses;     mcl_history.poses], ...
+                                   mapResolution, maxLidarRange);
+                    map_rebuild_counter = 0;
+                end
+            end
         end
-        optimizedPoses = [position, angle];
+        if isempty(mcl_history.poses)
+            optimizedPoses = [position, angle];
+        else
+            optimizedPoses = [base_poses; mcl_history.poses];
+        end
     end
 
     dt = toc(time_previous);
@@ -202,8 +248,25 @@ while drive
         time_not_moving = 0;
     end
 
+    % Cumulative travelled distance — skip the very first iteration where
+    % prev_position is still [0,0], otherwise the first delta is huge.
+    if cum_dist_started
+        cum_dist = cum_dist + position_diff;
+    else
+        cum_dist_started = true;
+    end
+
     prev_heading  = angle;
     prev_position = position;
+
+    if cum_dist >= max_distance
+        stop_robot(cmdPub);
+        updated_slam = slamAlg;
+        fail = false;
+        circle_scan_needed = true;
+        final_pose = [position, angle];
+        return;
+    end
 
     if (~validate_path([position; path(1:max_index,:)], map))
         stop_robot(cmdPub);

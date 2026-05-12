@@ -1,4 +1,4 @@
-function final_pose = move_to_point(scanSub,odomSub,cmdPub,target,slamAlg,initialPose)
+function [final_pose, mcl_history, circle_state] = move_to_point(scanSub,odomSub,cmdPub,target,slamAlg,initialPose,mcl_history,circle_state,scan_enabled)
     arguments
         scanSub
         odomSub
@@ -6,6 +6,16 @@ function final_pose = move_to_point(scanSub,odomSub,cmdPub,target,slamAlg,initia
         target
         slamAlg
         initialPose = []
+        mcl_history = struct('scans', {{}}, 'poses', zeros(0,3))
+        circle_state = struct('orange', false, 'blue', false)
+        scan_enabled = false
+    end
+
+    % Only fire the 20cm circle-scan trigger on legs where scanning is enabled.
+    if scan_enabled
+        chunk_distance = 0.20;
+    else
+        chunk_distance = Inf;
     end
 'move_to_point started'
 maxLidarRange = 8;
@@ -17,36 +27,96 @@ figure1 = figure;
 % Starting position: use MCL result when provided (loaded map case),
 % otherwise trust the last SLAM pose from exploration.
 [scans, optimizedPoses] = scansAndPoses(slamAlg);
-map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
+base_scans = scans;
+base_poses = optimizedPoses;
 if ~isempty(initialPose)
     current_pose = initialPose;
     use_slam = false;
+    if ~isempty(mcl_history.poses)
+        map = buildMap([base_scans(:); mcl_history.scans(:)], ...
+                       [base_poses;     mcl_history.poses], ...
+                       mapResolution, maxLidarRange);
+    else
+        map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
+    end
 else
     current_pose = optimizedPoses(end,:);
     use_slam = true;
+    map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 end
 
 while true
     path = createPath(current_pose(1:2),target,map);
     path
 
-    [slamAlg,fail,final_pose] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,0.8,0.20,current_pose,use_slam);
+    [slamAlg,fail,final_pose,mcl_history,circle_scan_needed] = MoveRobot( ...
+        path,slamAlg,scanSub,odomSub,cmdPub,figure1,0.8,0.20, ...
+        current_pose,use_slam,mcl_history,chunk_distance);
     current_pose = final_pose;
 
-    if use_slam
-        % MoveRobot has updated slamAlg — get fresh map from it.
-        [scans, optimizedPoses] = scansAndPoses(slamAlg);
-        map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
-        plot_all(figure1,map,optimizedPoses);
-    else
-        plot_all(figure1,map,current_pose);
+    refresh_map_and_plot();
+
+    if circle_scan_needed
+        pre_scan_pose = current_pose;
+
+        % Time to scan for circles. find_circles returns immediately if both
+        % already found, so this is cheap once the run is complete.
+        [circle_state, post_scan_pose] = find_circles( ...
+            scanSub, cmdPub, slamAlg, current_pose, circle_state, odomSub);
+        current_pose = post_scan_pose;
+
+        % Only backtrack if the robot actually moved off the path during the
+        % scan (i.e. find_circles did real work). Skip when both colors were
+        % already found at entry and the function returned a no-op.
+        moved_during_scan = norm(post_scan_pose(1:2) - pre_scan_pose(1:2)) > 0.05;
+        if moved_during_scan && ~isempty(path) && size(path,1) > 0
+            idx = nearest_path_idx(path, post_scan_pose);
+            backtrack_target = path(idx,:);
+            back_path = createPath(post_scan_pose(1:2), backtrack_target, map);
+            if ~isempty(back_path)
+                [slamAlg,~,final_pose,mcl_history] = MoveRobot( ...
+                    back_path,slamAlg,scanSub,odomSub,cmdPub,figure1,1.0,0.20, ...
+                    current_pose,use_slam,mcl_history);
+                current_pose = final_pose;
+                refresh_map_and_plot();
+            end
+        end
+
+        % Loop continues, next iteration replans toward target and drives
+        % another 20cm chunk.
+        continue;
     end
-    
-    drawnow;
 
     if ~fail
         break;
     end
 end
 close(figure1);
+
+    % --- nested helpers (share workspace with outer function) -----------------
+    function refresh_map_and_plot()
+        if use_slam
+            % MoveRobot has updated slamAlg — get fresh map from it.
+            [scans_local, poses_local] = scansAndPoses(slamAlg);
+            map = buildMap(scans_local, poses_local, mapResolution, maxLidarRange);
+            plot_all(figure1, map, poses_local);
+        else
+            % Rebuild from base + MCL trajectory so plotting/validation reflect actual driven path.
+            if ~isempty(mcl_history.poses)
+                map = buildMap([base_scans(:); mcl_history.scans(:)], ...
+                               [base_poses;     mcl_history.poses], ...
+                               mapResolution, maxLidarRange);
+                plot_all(figure1, map, [base_poses; mcl_history.poses]);
+            else
+                plot_all(figure1, map, current_pose);
+            end
+        end
+        drawnow;
+    end
+end
+
+
+function idx = nearest_path_idx(path, pose)
+    d = vecnorm(path - pose(1:2), 2, 2);
+    [~, idx] = min(d);
 end

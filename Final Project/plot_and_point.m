@@ -6,9 +6,9 @@ function points = plot_and_point(slamAlg)
     map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
 
     show(map);
-    title('Click 2 points: 1st for destination B, 2nd for destination C');
+    title('Click 3 points: B1, B2, C');
 
-    [x_clicks, y_clicks] = ginput(2);
+    [x_clicks, y_clicks] = ginput(3);
 
     hold on
     plot (x_clicks,y_clicks, 'ro', 'MarkerSize', 8, 'LineWidth', 2);

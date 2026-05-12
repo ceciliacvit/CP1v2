@@ -45,14 +45,22 @@ try
 
     points = plot_and_point(slamAlg)
 
-    %% move to B
-    final_pose_B = move_to_point(scanSub,odomSub,cmdPub,points(1,:),slamAlg,initialPose);
+    % Accumulated MCL trajectory across legs (empty in SLAM mode).
+    mcl_history = struct('scans', {{}}, 'poses', zeros(0,3));
+    % Circle-detection state persists across legs so we don't re-search.
+    circle_state = struct('orange', false, 'blue', false);
 
-    %% find circles
-    %find_circles(scanSub,cmdPub,slamAlg, final_pose_B);
+    %% move to B1 (no circle scanning)
+    [final_pose_B1, mcl_history, circle_state] = move_to_point( ...
+        scanSub,odomSub,cmdPub,points(1,:),slamAlg,initialPose,mcl_history,circle_state,false);
 
-    %% move to C
-    move_to_point(scanSub,odomSub,cmdPub,points(2,:),slamAlg,final_pose_B);
+    %% move to B2 (circle scanning enabled on this leg only)
+    [final_pose_B2, mcl_history, circle_state] = move_to_point( ...
+        scanSub,odomSub,cmdPub,points(2,:),slamAlg,final_pose_B1,mcl_history,circle_state,true);
+
+    %% move to C (no circle scanning)
+    [~, mcl_history, circle_state] = move_to_point( ...
+        scanSub,odomSub,cmdPub,points(3,:),slamAlg,final_pose_B2,mcl_history,circle_state,false);
 catch ME
     %% Catching potential errors
     % Stop the robot

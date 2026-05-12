@@ -1,9 +1,27 @@
-function find_circles(scanSub, cmdPub, slamAlg, current_pose)
+function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, current_pose, circle_state, odomSub)
+    arguments
+        scanSub
+        cmdPub
+        slamAlg
+        current_pose = []
+        circle_state = struct('orange', false, 'blue', false)
+        odomSub = []
+    end
+
+    % Skip immediately if both colors already found.
+    if circle_state.orange && circle_state.blue
+        if isempty(current_pose)
+            final_pose = [0, 0, 0];
+        else
+            final_pose = current_pose;
+        end
+        return;
+    end
 
     scan = receive(scanSub);
     try
     lidarScan = rosReadLidarScan(scan);
-    if nargin < 4 || isempty(current_pose)
+    if isempty(current_pose)
         addScan(slamAlg, lidarScan);
     end
     catch
@@ -12,13 +30,26 @@ function find_circles(scanSub, cmdPub, slamAlg, current_pose)
     maxLidarRange = 8;
     mapResolution = 20;
 
-    if nargin < 4 || isempty(current_pose)
+    if isempty(current_pose)
         [scans, optimizedPoses] = scansAndPoses(slamAlg);
         position = optimizedPoses(end,1:2);
         angle    = optimizedPoses(end,3);
     else
         position = current_pose(1:2);
         angle    = current_pose(3);
+    end
+
+    % Record odom anchor so we can dead-reckon back to a map-frame pose at exit.
+    odom_anchor_pos   = [];
+    odom_anchor_angle = 0;
+    if ~isempty(odomSub)
+        odom_msg = odomSub.LatestMessage;
+        if ~isempty(odom_msg)
+            odom_anchor_pos = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
+            eul = quat2eul([odom_msg.pose.pose.orientation.w, odom_msg.pose.pose.orientation.x, ...
+                            odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
+            odom_anchor_angle = eul(1);
+        end
     end
 
     global run_speed
@@ -37,9 +68,9 @@ function find_circles(scanSub, cmdPub, slamAlg, current_pose)
     global detect_idx
     detect_idx = 0;
     global orange_circle_found
-    orange_circle_found = false;
+    orange_circle_found = circle_state.orange;
     global blue_circle_found
-    blue_circle_found   = false;
+    blue_circle_found   = circle_state.blue;
     global slowing
     slowing = false;
 
@@ -65,6 +96,28 @@ function find_circles(scanSub, cmdPub, slamAlg, current_pose)
     cmdMsg.angular.z = 0;
     cmdMsg.linear.x  = 0;
     send(cmdPub, cmdMsg)
+
+    % Read back persistent flags into the return struct.
+    circle_state.orange = orange_circle_found;
+    circle_state.blue   = blue_circle_found;
+
+    % Estimate final pose by integrating odometry delta in the map frame.
+    final_pose = [position, angle];
+    if ~isempty(odomSub) && ~isempty(odom_anchor_pos)
+        odom_msg = odomSub.LatestMessage;
+        if ~isempty(odom_msg)
+            curr_odom_pos = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
+            eul = quat2eul([odom_msg.pose.pose.orientation.w, odom_msg.pose.pose.orientation.x, ...
+                            odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
+            curr_odom_angle = eul(1);
+            d_odom = curr_odom_pos - odom_anchor_pos;
+            theta_diff = angle - odom_anchor_angle;
+            c = cos(theta_diff); s = sin(theta_diff);
+            new_xy = [position(1) + c*d_odom(1) - s*d_odom(2), ...
+                      position(2) + s*d_odom(1) + c*d_odom(2)];
+            final_pose = [new_xy, angle + wrapToPi(curr_odom_angle - odom_anchor_angle)];
+        end
+    end
 
 end
 
