@@ -33,8 +33,9 @@ else
     x_guess     = initial_pose(1);
     y_guess     = initial_pose(2);
     theta_guess = initial_pose(3);
-    % Generous covariance so the filter can recover if A->B1 dead-reckoning drifted.
-    initial_covariance = diag([0.5, 0.5, 0.25]);
+    % Generous covariance so the filter can recover if A->B1 dead-reckoning drifted significantly.
+    % Increased to cover an even larger area for bigger discrepancies.
+    initial_covariance = diag([4.0, 4.0, 1.0]);
 end
 
 mcl.GlobalLocalization  = false;

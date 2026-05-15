@@ -1,7 +1,7 @@
 function path = createPath(start, goal, map)
     mapCopy = copy(map);
     updateOccupancy(mapCopy, max(checkOccupancy(mapCopy), 0));
-    inflate(mapCopy, 0.3);
+    inflate(mapCopy, 0.1);
 
     goal  = nearest_free(goal,  mapCopy);
     start = nearest_free(start, mapCopy);
@@ -11,7 +11,7 @@ function path = createPath(start, goal, map)
         return;
     end
 
-    prm = mobileRobotPRM(map, 1000);
+    prm = mobileRobotPRM(mapCopy, 1000);
     prm.ConnectionDistance = 5;
     try
         path = prm.findpath(start, goal);
