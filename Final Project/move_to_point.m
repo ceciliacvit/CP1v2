@@ -14,8 +14,10 @@ function [final_pose, mcl_history, circle_state] = move_to_point(scanSub,odomSub
 'move_to_point started'
 maxLidarRange = 8;
 mapResolution = 20;
-global visualise
-visualise=TurtleBotVisualise();
+% global visualise
+% if isempty(visualise) || ~isvalid(visualise.fig)
+%     visualise=TurtleBotVisualise();
+% end
 figure1 = figure;
 
 % Starting position: use MCL result when provided (loaded map case),

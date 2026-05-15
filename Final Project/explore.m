@@ -8,8 +8,10 @@ slamAlg.OptimizationInterval = 1;
 slamAlg.LoopClosureMaxAttempts = 10;
 slamAlg.LoopClosureThreshold = 100;  
 slamAlg.LoopClosureSearchRadius = 8;
-global visualise
-visualise=TurtleBotVisualise();
+% global visualise
+% if isempty(visualise) || ~isvalid(visualise.fig)
+%     visualise=TurtleBotVisualise();
+% end
 figure1 = figure;
 figure2 = figure;
 path=[0,0];

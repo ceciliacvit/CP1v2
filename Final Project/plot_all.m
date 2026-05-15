@@ -13,14 +13,18 @@ hold on;
 position = poses(end,1:2);
 angle = poses(end,3);
 
-global visualise;
-visualise = updatePose(visualise, position , angle);
+% global visualise;
+% visualise = updatePose(visualise, position , angle);
 scatter(target(1),target(2));
 plot(path(:,1), path(:,2), 'r-', 'LineWidth', 2);
 plot(path(:,1), path(:,2), 'bo', 'MarkerSize', 4, 'MarkerFaceColor', 'b');
 if ~isempty(lookahead_point)
     plot(lookahead_point(1), lookahead_point(2), 'g*', 'MarkerSize', 12, 'LineWidth', 2);
 end
+
+% Plot current robot position
+plot(position(1), position(2), 'mo', 'MarkerSize', 8, 'MarkerFaceColor', 'm');
+
 hold off;
 drawnow;
 end
