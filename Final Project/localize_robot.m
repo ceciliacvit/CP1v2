@@ -69,8 +69,6 @@ end
 
 cmdMsg = ros2message('geometry_msgs/Twist');
 
-pose = [0, 0, 0];
-
 %% Visualization setup
 fig = figure('Name', 'MCL Localization');
 ax  = axes(fig);

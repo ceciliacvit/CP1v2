@@ -87,8 +87,8 @@ if ~isempty(odom_msg)
                     odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
     odom_anchor_angle = eul(1);
 end
-slam_anchor_pos   = position;
-slam_anchor_angle = angle;
+start_anchor_pos   = position;
+start_anchor_angle = angle;
 curr_odom_pos     = odom_anchor_pos;
 curr_odom_angle   = odom_anchor_angle;
 
@@ -118,10 +118,10 @@ while drive
                         odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
         curr_odom_angle = eul(1);
         d_odom = curr_odom_pos - odom_anchor_pos;
-        theta_diff = slam_anchor_angle - odom_anchor_angle;
+        theta_diff = start_anchor_angle - odom_anchor_angle;
         c = cos(theta_diff); s = sin(theta_diff);
-        position = slam_anchor_pos + [c*d_odom(1) - s*d_odom(2), s*d_odom(1) + c*d_odom(2)];
-        angle    = slam_anchor_angle + wrapToPi(curr_odom_angle - odom_anchor_angle);
+        position = start_anchor_pos + [c*d_odom(1) - s*d_odom(2), s*d_odom(1) + c*d_odom(2)];
+        angle    = start_anchor_angle + wrapToPi(curr_odom_angle - odom_anchor_angle);
     end
 
     %% Pure dead-reckoning during driving. Position/angle are updated by the
@@ -204,7 +204,7 @@ while drive
 
     %% Pure pursuit control
     currentPose = [position, angle];
-    [v_desired, omega_pp, lookaheadPt] = controller(currentPose);
+    [v_desired, ~, lookaheadPt] = controller(currentPose);
 
     %% VFH obstacle avoidance
     targetDir = wrapToPi(atan2(lookaheadPt(2) - position(2), ...
