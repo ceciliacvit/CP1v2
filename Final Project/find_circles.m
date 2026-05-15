@@ -82,7 +82,7 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
     full_rotation  = 2*pi;
 
     while ~(blue_circle_found && orange_circle_found) && total_rotation < full_rotation
-        circle = detectCircle(0.8);
+        circle = detectCircle(0.8, orange_circle_found, blue_circle_found);
         detect_idx = mod(detect_idx, 3) + 1;
         Detects(detect_idx) = circle.found;
         recent_sum = sum(Detects);
@@ -140,7 +140,7 @@ function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, cur
                 break;
             end
             
-            circle = detectCircle(0.8);
+            circle = detectCircle(0.8, orange_circle_found, blue_circle_found);
             if ~circle.found
                 cmdMsg.linear.x = 0;
                 cmdMsg.angular.z = 0;

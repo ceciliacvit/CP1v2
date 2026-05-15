@@ -1,6 +1,8 @@
-function circle = detectCircle(sensitivity)
+function circle = detectCircle(sensitivity, ignore_orange, ignore_blue)
 arguments
     sensitivity = 0.8;
+    ignore_orange = false;
+    ignore_blue = false;
 end
 % circle.found (bool), circle.distance (m), circle.angle_error (rad)
 
@@ -51,20 +53,35 @@ end
 
     circle.found = false;
     circle.color = "";
+    annotated = current_img;
+
     if ~isempty(radii)
-        cx = round(centers(1,1));
-        cy = round(centers(1,2));
-        if (is_orange(cy,cx))
-            circle.color = "orange";
-        elseif (is_blue(cy,cx))
-            circle.color = "blue";
+        rows = size(current_img, 1);
+        [xx, yy] = meshgrid(1:cols, 1:rows);
+        
+        for i = 1:length(radii)
+            inside_circle = (xx - centers(i,1)).^2 + (yy - centers(i,2)).^2 < radii(i)^2;
+            
+            orange_count = sum(is_orange(:) & inside_circle(:));
+            blue_count   = sum(is_blue(:)   & inside_circle(:));
+            
+            detected_color = "";
+            if orange_count > blue_count && orange_count > 0
+                detected_color = "orange";
+            elseif blue_count > orange_count && blue_count > 0
+                detected_color = "blue";
+            end
+            
+            % If we found a color, and it's not one we're ignoring, lock onto it
+            if (detected_color == "orange" && ~ignore_orange) || (detected_color == "blue" && ~ignore_blue)
+                circle.color = detected_color;
+                circle.found = true;
+                circle.angle_error = -atan2(centers(i,1) - cols/2, 1266);
+                circle.distance    = 1266 * 0.1 / (2 * radii(i));
+                annotated = insertShape(current_img, 'Circle', [centers(i,1), centers(i,2), radii(i)], 'Color', 'green', 'LineWidth', 5);
+                break; % Stop checking circles once we found a valid one in this frame
+            end
         end
-        circle.found = true;
-        circle.angle_error = -atan2(centers(1,1) - cols/2, 1266);
-        circle.distance    = 1266 * 0.1 / (2 * radii(1));
-        annotated = insertShape(current_img, 'Circle', [centers(1,1), centers(1,2), radii(1)], 'Color', 'green', 'LineWidth', 5);
-    else
-        annotated = current_img;
     end
 
     if isempty(figHandle) || ~isvalid(figHandle)
