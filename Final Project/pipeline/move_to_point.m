@@ -11,20 +11,16 @@ function [final_pose, mcl_history, circle_state] = move_to_point(scanSub,odomSub
         scan_enabled = false
     end
 
-'move_to_point started'
 maxLidarRange = 8;
 mapResolution = 20;
 figure1 = figure;
 
-% Starting position is always the MCL result (loaded-map workflow).
 [base_scans, base_poses] = scansAndPoses(slamAlg);
 current_pose = initialPose;
-% Map is static: the loaded map is the source of truth.
 map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 
 while true
-    % Only fire the 75cm circle-scan trigger if scanning is enabled AND
-    % we haven't found both circles yet.
+    % only chunk the drive while still looking for circles
     if scan_enabled && ~(circle_state.orange && circle_state.blue)
         chunk_distance = 0.75;
     else
@@ -32,13 +28,10 @@ while true
     end
 
     if scan_enabled
-        % B1->B2 leg only: straight line from current pose to target, no PRM.
-        % validate_path inside MoveRobot still checks the segment against the map.
         path = [current_pose(1:2); target];
     else
         path = createPath(current_pose(1:2),target,map);
     end
-    path
 
     [slamAlg,fail,final_pose,mcl_history,circle_scan_needed] = MoveRobot( ...
         path,slamAlg,scanSub,odomSub,cmdPub,figure1,0.8,0.20, ...
@@ -47,26 +40,20 @@ while true
 
     refresh_map_and_plot();
 
-    % Recovery: if MoveRobot bailed out (stuck or its path went invalid), the
-    % believed pose is likely wrong (e.g. inside a wall). Re-run MCL before
-    % replanning so the next path starts from a corrected pose.
+    % a failed leg means the believed pose is unreliable, so relocalize
     if fail
-        'fail detected — running MCL to re-localize'
+        disp('fail: relocalizing');
         current_pose = localize_robot(map, scanSub, odomSub, cmdPub, current_pose);
     end
 
     if circle_scan_needed
         pre_scan_pose = current_pose;
 
-        % Time to scan for circles. find_circles returns immediately if both
-        % already found, so this is cheap once the run is complete.
         [circle_state, post_scan_pose] = find_circles( ...
             cmdPub, current_pose, circle_state, odomSub);
         current_pose = post_scan_pose;
 
-        % Only backtrack if the robot actually moved off the path during the
-        % scan (i.e. find_circles did real work). Skip when both colors were
-        % already found at entry and the function returned a no-op.
+        % only backtrack if the scan actually moved the robot off the path
         moved_during_scan = norm(post_scan_pose(1:2) - pre_scan_pose(1:2)) > 0.05;
         if moved_during_scan && ~isempty(path) && size(path,1) > 0
             idx = nearest_path_idx(path, post_scan_pose);
@@ -81,8 +68,6 @@ while true
             end
         end
 
-        % Loop continues, next iteration replans toward target and drives
-        % another 75cm chunk.
         continue;
     end
 
@@ -92,9 +77,7 @@ while true
 end
 close(figure1);
 
-    % --- nested helpers (share workspace with outer function) -----------------
     function refresh_map_and_plot()
-        % Map stays at the loaded base map; only the trajectory updates.
         if ~isempty(mcl_history.poses)
             plot_all(figure1, map, [base_poses; mcl_history.poses]);
         else

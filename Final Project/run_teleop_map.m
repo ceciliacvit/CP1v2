@@ -1,10 +1,6 @@
-%% Passive SLAM map builder — run this alongside an external teleop node.
-%
-% Driving is handled by, e.g. (in a separate terminal):
+% Passive SLAM map builder. Drive the robot from a separate terminal with
 %   ros2 run turtlebot3_teleop teleop_keyboard
-%
-% This script only listens to /scan and /odom, builds the map, and saves
-% explored_map.mat when you press Q on the figure window.
+% then press Q on the figure to save explored_map.mat.
 
 clear all
 clc
@@ -27,7 +23,7 @@ while true
     end
 end
 
-% Resume from previous run if a saved map exists, else start fresh
+% resume a previous map if one exists
 if isfile('explored_map.mat')
     load('explored_map.mat', 'slamAlg');
 else

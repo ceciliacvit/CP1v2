@@ -19,7 +19,6 @@ if ~isempty(lookahead_point)
     plot(lookahead_point(1), lookahead_point(2), 'g*', 'MarkerSize', 12, 'LineWidth', 2);
 end
 
-% Plot current robot position
 plot(position(1), position(2), 'mo', 'MarkerSize', 8, 'MarkerFaceColor', 'm');
 
 hold off;

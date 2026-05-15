@@ -1,36 +1,26 @@
-%% Clear workspace, command window, and close all figures
 clear all
 clc
 close all
 
-%% Put helper folders on the path (run from the Final Project folder)
+% run this from the Final Project folder
 addpath('pipeline','teleop','shared');
 
-%% Set the ROS domain ID for communication
 setenv('ROS_DOMAIN_ID', '30');
-
-%% Display available ROS2 topics (for debug)
 ros2 topic list
 
-%% Create a ROS2 node for communication
 controlNode = ros2node('/base_station');
 
-%% Define subscribers
+% retry until ROS2 discovery finds the topics
 while true
     try
-    scanSub = ros2subscriber(controlNode, '/scan', {}, 'Reliability', 'besteffort'); % laser scan topic
-    odomSub = ros2subscriber(controlNode, '/odom', 'nav_msgs/Odometry', 'Reliability', 'besteffort');
-    break
-
+        scanSub = ros2subscriber(controlNode, '/scan', {}, 'Reliability', 'besteffort');
+        odomSub = ros2subscriber(controlNode, '/odom', 'nav_msgs/Odometry', 'Reliability', 'besteffort');
+        break
     catch
     end
-
 end
 
-
-
 try
-    %% Define publishers
     cmdPub = ros2publisher(controlNode, '/cmd_vel', 'geometry_msgs/Twist');
 
     load('explored_map.mat', 'occ_matrix', 'resolution', 'grid_location', 'slamAlg');
@@ -38,44 +28,33 @@ try
     map.GridLocationInWorld = grid_location;
     initialPose = localize_robot(map, scanSub, odomSub, cmdPub);
 
-    points = plot_and_point(slamAlg)
+    points = plot_and_point(slamAlg);
 
-    % Accumulated MCL trajectory across legs.
+    % trajectory and circle state persist across legs
     mcl_history = struct('scans', {{}}, 'poses', zeros(0,3));
-    % Circle-detection state persists across legs so we don't re-search.
     circle_state = struct('orange', false, 'blue', false);
 
-    %% move to B1 (no circle scanning)
+    % A -> B1
     [final_pose_B1, mcl_history, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(1,:),slamAlg,initialPose,mcl_history,circle_state,false);
 
-    %% Re-localize at B1. A->B1 was pure dead-reckoning, so correct
-    % accumulated drift, then drive from the true pose to actual B1
-    % before starting the scan leg.
+    % A->B1 was dead-reckoned, so relocalize and re-approach B1 before scanning
     final_pose_B1 = localize_robot(map, scanSub, odomSub, cmdPub, final_pose_B1);
     [final_pose_B1, mcl_history, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(1,:),slamAlg,final_pose_B1,mcl_history,circle_state,false);
 
-    %% move to B2 (circle scanning enabled on this leg only)
+    % B1 -> B2, scanning for circles on this leg
     [final_pose_B2, mcl_history, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(2,:),slamAlg,final_pose_B1,mcl_history,circle_state,true);
 
-    %% move to C (no circle scanning)
+    % B2 -> C
     [~, mcl_history, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(3,:),slamAlg,final_pose_B2,mcl_history,circle_state,false);
 catch ME
-    %% Catching potential errors
-    % Stop the robot
     cmdMsg = ros2message('geometry_msgs/Twist');
     cmdMsg.linear.x = 0;
     cmdMsg.angular.z = 0;
     send(cmdPub, cmdMsg);
-
-    % Clean up ROS subscriptions
     clear scanSub
-
-    % Show the error
-    if ~strcmp(ME.identifier, 'NonExeption:EndProgram')
-        rethrow(ME)
-    end
+    rethrow(ME)
 end

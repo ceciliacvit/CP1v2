@@ -1,4 +1,5 @@
 function [updated_slam, fail, final_pose, mcl_history, circle_scan_needed] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,percentage_threshold,tolerance,current_pose,mcl_history,max_distance)
+% Drive along path with pure pursuit + VFH, dead-reckoning the pose from odom.
     arguments
         path;
         slamAlg;
@@ -35,14 +36,12 @@ total_waypoints = size(path, 1);
 max_index = round(total_waypoints * percentage_threshold);
 goal = path(max_index, :);
 
-%% Pure pursuit controller
 controller = controllerPurePursuit;
 controller.LookaheadDistance     = 0.3;
 controller.MaxAngularVelocity    = 1.84;
 controller.DesiredLinearVelocity = 0.2;
 controller.Waypoints             = path(1:max_index, :);
 
-%% VFH controller
 vfh = controllerVFH;
 vfh.UseLidarScan = true;
 vfh.RobotRadius = 0.15;
@@ -58,18 +57,13 @@ prev_heading  = 0;
 cum_dist = 0;
 cum_dist_started = false;
 
-% Build initial map before entering the loop
 [base_scans, base_poses] = scansAndPoses(slamAlg);
-
-% Map is static: the loaded map is the source of truth.
 map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 
-% Driving is pure dead-reckoning between external localize_robot calls
-% (at start and on arrival at B1); no in-loop scan matching.
 position = current_pose(1:2);
 angle = current_pose(3);
 if isempty(mcl_history.poses)
-    optimizedPoses = current_pose; % For plotting
+    optimizedPoses = current_pose;
 else
     optimizedPoses = [base_poses; mcl_history.poses];
 end
@@ -77,7 +71,7 @@ end
 last_scan_position = position;
 last_scan_angle    = angle;
 
-% Odom anchors — dead reckon from here between updates
+% dead reckon from these odom/pose anchors
 odom_anchor_pos   = [0, 0];
 odom_anchor_angle = 0;
 odom_msg = odomSub.LatestMessage;
@@ -96,7 +90,6 @@ drive = true;
 
 while drive
 
-    %% find position and angle
     scan = receive(scanSub);
     if isempty(scan)
         continue;
@@ -105,10 +98,9 @@ while drive
     try
         lidarScan = rosReadLidarScan(scan);
     catch
-        continue;
+        continue;   % skip a malformed scan message
     end
 
-    %% Dead reckoning from odometry, anchored at the start pose
     curr_odom_pos   = odom_anchor_pos;
     curr_odom_angle = odom_anchor_angle;
     odom_msg = odomSub.LatestMessage;
@@ -124,9 +116,6 @@ while drive
         angle    = start_anchor_angle + wrapToPi(curr_odom_angle - odom_anchor_angle);
     end
 
-    %% Pure dead-reckoning during driving. Position/angle are updated by the
-    % odom block above. We just track the trajectory for plotting; no
-    % scan-matching corrections happen inside MoveRobot.
     dist_moved  = norm(position - last_scan_position);
     angle_moved = abs(wrapToPi(angle - last_scan_angle));
     if isempty(mcl_history.poses) || dist_moved > 0.05 || angle_moved > 0.1
@@ -147,7 +136,6 @@ while drive
         dt = 0.01;
     end
 
-    %% Stuck detection
     position_diff = norm(position - prev_position);
     angle_diff = wrapToPi(prev_heading - angle);
     if position_diff < 0.02 && abs(angle_diff) < 0.05
@@ -164,8 +152,7 @@ while drive
         time_not_moving = 0;
     end
 
-    % Cumulative travelled distance — skip the very first iteration where
-    % prev_position is still [0,0], otherwise the first delta is huge.
+    % skip the first iteration so the [0,0] prev_position doesn't add a huge delta
     if cum_dist_started
         cum_dist = cum_dist + position_diff;
     else
@@ -192,7 +179,6 @@ while drive
         return
     end
 
-    %% Check if goal reached
     if norm(position - goal) < tolerance
         drive = false;
         break;
@@ -202,18 +188,15 @@ while drive
         plot_all(figure1, map, optimizedPoses, path(1:max_index,:));
     end
 
-    %% Pure pursuit control
     currentPose = [position, angle];
     [v_desired, ~, lookaheadPt] = controller(currentPose);
 
-    %% VFH obstacle avoidance
     targetDir = wrapToPi(atan2(lookaheadPt(2) - position(2), ...
                                lookaheadPt(1) - position(1)) - angle);
-    
+
     steeringDir = vfh(lidarScan, targetDir);
 
     if isnan(steeringDir)
-        % No valid path found by VFH
         v = 0;
         omega = 0;
     else

@@ -1,11 +1,5 @@
 function pose = localize_robot(map, scanSub, odomSub, cmdPub, initial_pose)
-% Global relocalization using monteCarloLocalization.
-% Spins the robot until the particle filter converges, then returns
-% the estimated pose [x, y, theta] in the map (SLAM world) frame.
-%
-% If initial_pose is supplied (e.g. on re-localization at B1 from a dead-
-% reckoned estimate), skip the user-click step and seed MCL with it under
-% a generous covariance so the filter can recover from drift.
+% MCL relocalization: spin until the particle filter converges, return [x y theta].
 arguments
     map
     scanSub
@@ -18,7 +12,6 @@ mcl = monteCarloLocalization;
 mcl.UseLidarScan        = true;
 
 if isempty(initial_pose)
-    % Ask user for initial guess
     fig = figure('Name', 'MCL Initialization');
     show(map);
     title('Click 1) Robot position, 2) A point in front of the robot (Direction)');
@@ -33,8 +26,7 @@ else
     x_guess     = initial_pose(1);
     y_guess     = initial_pose(2);
     theta_guess = initial_pose(3);
-    % Generous covariance so the filter can recover if A->B1 dead-reckoning drifted significantly.
-    % Increased to cover an even larger area for bigger discrepancies.
+    % wide covariance so the filter can recover from dead-reckoning drift
     initial_covariance = diag([4.0, 4.0, 1.0]);
 end
 
@@ -50,7 +42,7 @@ mcl.SensorModel.SensorLimits = [0.1, 8];
 mcl.SensorModel.NumBeams     = 180;
 mcl.MotionModel.Noise        = [0.1 0.1 0.05 0.05];
 
-converge_threshold = 0.03;  % max xy std dev [m] to declare convergence
+converge_threshold = 0.03;
 
 odom_msg = odomSub.LatestMessage;
 while isempty(odom_msg)
@@ -58,7 +50,7 @@ while isempty(odom_msg)
     odom_msg = odomSub.LatestMessage;
 end
 
-% Anchor MCL with an initial scan before moving so the initial pose aligns with the start
+% seed MCL with one scan before moving so it starts aligned
 scan = receive(scanSub);
 try
     lidarScan = rosReadLidarScan(scan);
@@ -69,7 +61,6 @@ end
 
 cmdMsg = ros2message('geometry_msgs/Twist');
 
-%% Visualization setup
 fig = figure('Name', 'MCL Localization');
 ax  = axes(fig);
 show(map, 'Parent', ax);
@@ -79,8 +70,7 @@ drawnow;
 t_start = tic;
 
 while true
-    % Continuously publish motion commands to prevent robot timeout
-    % Move forward/backward slightly in a sine wave while turning
+    % keep moving in a small sine while turning so the robot doesn't time out
     t = toc(t_start);
     cmdMsg.linear.x = 0.05 * sin(t);
     cmdMsg.angular.z = 0.3;
@@ -105,21 +95,10 @@ while true
     if isUpdated
         xy_std = sqrt(trace(covariance(1:2, 1:2)) / 2);
 
-        %% Update plot
         cla(ax);
         show(map, 'Parent', ax);
         hold(ax, 'on');
 
-        % Particle cloud — colour-coded by weight
-        try
-            pts = mcl.Particles;
-            scatter(ax, pts.Poses(:,1), pts.Poses(:,2), 4, ...
-                    pts.Weights, 'filled', 'MarkerFaceAlpha', 0.5);
-            colormap(ax, 'hot');
-        catch
-        end
-
-        % Estimated pose: dot + heading arrow
         plot(ax, estimatedPose(1), estimatedPose(2), ...
              'g*', 'MarkerSize', 12, 'LineWidth', 2);
         quiver(ax, estimatedPose(1), estimatedPose(2), ...
@@ -127,7 +106,7 @@ while true
                'g', 'LineWidth', 2, 'MaxHeadSize', 1);
 
         hold(ax, 'off');
-        title(ax, sprintf('Localizing — std = %.3f m  (converges at %.3f m)', ...
+        title(ax, sprintf('Localizing - std = %.3f m  (converges at %.3f m)', ...
               xy_std, converge_threshold));
         drawnow limitrate;
 
@@ -135,15 +114,12 @@ while true
             title(ax, 'Stopping to finalize pose...');
             drawnow;
 
-            % Stop the robot
             cmdMsg.linear.x = 0;
             cmdMsg.angular.z = 0;
             send(cmdPub, cmdMsg);
-
-            % Wait for physical stop
             pause(1.0);
 
-            % Process a few more scans to get the exact motionless pose
+            % a few more scans once stopped for a clean motionless pose
             for i = 1:10
                 scan = receive(scanSub);
                 odom_msg = odomSub.LatestMessage;
