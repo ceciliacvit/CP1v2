@@ -10,6 +10,8 @@ clear all
 clc
 close all
 
+addpath('pipeline','teleop','shared');
+
 setenv('ROS_DOMAIN_ID', '30');
 ros2 topic list
 

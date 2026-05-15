@@ -11,6 +11,8 @@
 
 clear; clc; close all;
 
+addpath('pipeline','teleop','shared');
+
 %% 1. Configuration & Setup
 setenv('ROS_DOMAIN_ID', '30'); % Match the domain ID of the base station
 simNode = ros2node('/turtlebot_simulator');

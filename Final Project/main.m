@@ -3,6 +3,9 @@ clear all
 clc
 close all
 
+%% Put helper folders on the path (run from the Final Project folder)
+addpath('pipeline','teleop','shared');
+
 %% Set the ROS domain ID for communication
 setenv('ROS_DOMAIN_ID', '30');
 
