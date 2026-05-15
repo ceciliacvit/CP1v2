@@ -28,9 +28,7 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
         end
     end
 
-    global run_speed
-    run_speed = 0.3;
-    global scan_speed
+    run_speed  = 0.3;
     scan_speed = 0.05;
 
     cmdMsg = ros2message('geometry_msgs/Twist');
@@ -39,27 +37,25 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
     pause(1.0)
     send(cmdPub, cmdMsg)
 
-    global Detects
-    Detects = false(1, 3);
-    global detect_idx
+    % Rolling window of recent detections; a color is only locked onto once
+    % the whole window agrees, to reject single-frame false positives.
+    detect_window = 3;
+    Detects = false(1, detect_window);
     detect_idx = 0;
-    global orange_circle_found
     orange_circle_found = circle_state.orange;
-    global blue_circle_found
     blue_circle_found   = circle_state.blue;
-    global slowing
     slowing = false;
 
     % One spin per find_circles call. Track cumulative rotation via odom yaw
     % so the function returns after ~360 degrees regardless of how many
-    % circles were found — the next 20cm chunk gets a fresh vantage point.
+    % circles were found — the next drive chunk gets a fresh vantage point.
     last_yaw = read_yaw(odomSub);
     total_rotation = 0;
     full_rotation  = 2*pi;
 
     while ~(blue_circle_found && orange_circle_found) && total_rotation < full_rotation
         circle = detectCircle(0.8, orange_circle_found, blue_circle_found);
-        detect_idx = mod(detect_idx, 3) + 1;
+        detect_idx = mod(detect_idx, detect_window) + 1;
         Detects(detect_idx) = circle.found;
         recent_sum = sum(Detects);
 
@@ -85,7 +81,7 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
         last_yaw = curr_yaw;
 
         % Not confirmed by enough recent frames, or color already found
-        if recent_sum <= 2
+        if recent_sum < detect_window
             continue;
         end
         if circle.color == ""
@@ -153,7 +149,7 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
         else
             disp("Failed to reach circle, resuming search.");
         end
-        Detects = false(1, 10);  % reset so next circle starts fresh
+        Detects = false(1, detect_window);  % reset so next circle starts fresh
         detect_idx = 0;
         slowing = false;
 
