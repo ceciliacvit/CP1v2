@@ -14,10 +14,6 @@ function [final_pose, mcl_history, circle_state] = move_to_point(scanSub,odomSub
 'move_to_point started'
 maxLidarRange = 8;
 mapResolution = 20;
-% global visualise
-% if isempty(visualise) || ~isvalid(visualise.fig)
-%     visualise=TurtleBotVisualise();
-% end
 figure1 = figure;
 
 % Starting position is always the MCL result (loaded-map workflow).
@@ -27,7 +23,7 @@ current_pose = initialPose;
 map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 
 while true
-    % Only fire the 50cm circle-scan trigger if scanning is enabled AND
+    % Only fire the 75cm circle-scan trigger if scanning is enabled AND
     % we haven't found both circles yet.
     if scan_enabled && ~(circle_state.orange && circle_state.blue)
         chunk_distance = 0.75;
@@ -86,7 +82,7 @@ while true
         end
 
         % Loop continues, next iteration replans toward target and drives
-        % another 20cm chunk.
+        % another 75cm chunk.
         continue;
     end
 

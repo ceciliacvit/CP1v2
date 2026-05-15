@@ -9,8 +9,6 @@ end
     global img new_image_available
     persistent controlNode sub figHandle hImg
 
-    %controlNode = ros2node('/base_station');
-
     if isempty(controlNode)
         img = [];
         new_image_available = false;
