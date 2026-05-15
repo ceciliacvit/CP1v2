@@ -33,19 +33,14 @@ try
     %% Define publishers
     cmdPub = ros2publisher(controlNode, '/cmd_vel', 'geometry_msgs/Twist');
 
-    if isfile('explored_map.mat')
-        load('explored_map.mat', 'occ_matrix', 'resolution', 'grid_location', 'slamAlg');
-        map = occupancyMap(occ_matrix, resolution);
-        map.GridLocationInWorld = grid_location;
-        initialPose = localize_robot(map, scanSub, odomSub, cmdPub);
-    else
-        slamAlg = explore(scanSub,cmdPub,odomSub);
-        initialPose = [];
-    end
+    load('explored_map.mat', 'occ_matrix', 'resolution', 'grid_location', 'slamAlg');
+    map = occupancyMap(occ_matrix, resolution);
+    map.GridLocationInWorld = grid_location;
+    initialPose = localize_robot(map, scanSub, odomSub, cmdPub);
 
     points = plot_and_point(slamAlg)
 
-    % Accumulated MCL trajectory across legs (empty in SLAM mode).
+    % Accumulated MCL trajectory across legs.
     mcl_history = struct('scans', {{}}, 'poses', zeros(0,3));
     % Circle-detection state persists across legs so we don't re-search.
     circle_state = struct('orange', false, 'blue', false);
@@ -54,14 +49,12 @@ try
     [final_pose_B1, mcl_history, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(1,:),slamAlg,initialPose,mcl_history,circle_state,false);
 
-    %% Re-localize at B1 (MCL mode only). A->B1 was pure dead-reckoning, so
-    % correct accumulated drift, then drive from the true pose to actual B1
+    %% Re-localize at B1. A->B1 was pure dead-reckoning, so correct
+    % accumulated drift, then drive from the true pose to actual B1
     % before starting the scan leg.
-    if isfile('explored_map.mat')
-        final_pose_B1 = localize_robot(map, scanSub, odomSub, cmdPub, final_pose_B1);
-        [final_pose_B1, mcl_history, circle_state] = move_to_point( ...
-            scanSub,odomSub,cmdPub,points(1,:),slamAlg,final_pose_B1,mcl_history,circle_state,false);
-    end
+    final_pose_B1 = localize_robot(map, scanSub, odomSub, cmdPub, final_pose_B1);
+    [final_pose_B1, mcl_history, circle_state] = move_to_point( ...
+        scanSub,odomSub,cmdPub,points(1,:),slamAlg,final_pose_B1,mcl_history,circle_state,false);
 
     %% move to B2 (circle scanning enabled on this leg only)
     [final_pose_B2, mcl_history, circle_state] = move_to_point( ...

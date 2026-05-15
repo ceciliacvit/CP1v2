@@ -1,4 +1,4 @@
-function [updated_slam, fail, final_pose, mcl_history, circle_scan_needed] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,percentage_threshold,tolerance,current_pose,use_slam,mcl_history,max_distance)
+function [updated_slam, fail, final_pose, mcl_history, circle_scan_needed] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,percentage_threshold,tolerance,current_pose,mcl_history,max_distance)
     arguments
         path;
         slamAlg;
@@ -9,7 +9,6 @@ function [updated_slam, fail, final_pose, mcl_history, circle_scan_needed] = Mov
         percentage_threshold = 1;
         tolerance = 0.20;
         current_pose = [];
-        use_slam = true;
         mcl_history = struct('scans', {{}}, 'poses', zeros(0,3));
         max_distance = Inf;
     end
@@ -22,7 +21,6 @@ function [updated_slam, fail, final_pose, mcl_history, circle_scan_needed] = Mov
 
 maxLidarRange = 8;
 mapResolution = 20;
-map_rebuild_interval = 10;
 
 time_previous = tic;
 fail = false;
@@ -61,36 +59,19 @@ cum_dist = 0;
 cum_dist_started = false;
 
 % Build initial map before entering the loop
-scan = receive(scanSub);
+[base_scans, base_poses] = scansAndPoses(slamAlg);
 
-[scans, optimizedPoses] = scansAndPoses(slamAlg);
-base_scans = scans;
-base_poses = optimizedPoses;
-
-% Map is static in MCL mode (loaded map is the source of truth) and grows
-% only in SLAM mode via the addScan branch below.
+% Map is static: the loaded map is the source of truth.
 map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
-map_rebuild_counter = 0;
 
-if use_slam
-    try
-        lidarScan = rosReadLidarScan(scan);
-        addScan(slamAlg, lidarScan);
-    catch
-    end
-    [scans, optimizedPoses] = scansAndPoses(slamAlg);
-    position = optimizedPoses(end,1:2);
-    angle    = optimizedPoses(end,3);
+% Driving is pure dead-reckoning between external localize_robot calls
+% (at start and on arrival at B1); no in-loop scan matching.
+position = current_pose(1:2);
+angle = current_pose(3);
+if isempty(mcl_history.poses)
+    optimizedPoses = current_pose; % For plotting
 else
-    position = current_pose(1:2);
-    angle = current_pose(3);
-    if isempty(mcl_history.poses)
-        optimizedPoses = current_pose; % For plotting
-    else
-        optimizedPoses = [base_poses; mcl_history.poses];
-    end
-    % No in-loop MCL: driving in MCL mode is pure dead-reckoning between
-    % external localize_robot calls (at start and on arrival at B1).
+    optimizedPoses = [base_poses; mcl_history.poses];
 end
 
 last_scan_position = position;
@@ -127,7 +108,7 @@ while drive
         continue;
     end
 
-    %% Dead reckoning from odometry between SLAM updates
+    %% Dead reckoning from odometry, anchored at the start pose
     curr_odom_pos   = odom_anchor_pos;
     curr_odom_angle = odom_anchor_angle;
     odom_msg = odomSub.LatestMessage;
@@ -143,51 +124,21 @@ while drive
         angle    = slam_anchor_angle + wrapToPi(curr_odom_angle - odom_anchor_angle);
     end
 
-    %% Add scan and resync SLAM when robot has moved enough (ONLY IF use_slam)
-    if use_slam
-        dist_moved  = norm(position - last_scan_position);
-        angle_moved = abs(wrapToPi(angle - last_scan_angle));
-        if dist_moved > 0.05 || angle_moved > 0.1 || isempty(path)
-            d_odom  = curr_odom_pos - odom_anchor_pos;
-            d_theta = wrapToPi(curr_odom_angle - odom_anchor_angle);
-            c = cos(odom_anchor_angle); s = sin(odom_anchor_angle);
-            relPoseEst = [c*d_odom(1)+s*d_odom(2), -s*d_odom(1)+c*d_odom(2), d_theta];
-            addScan(slamAlg, lidarScan, relPoseEst);
-            last_scan_position = position;
-            last_scan_angle    = angle;
-
-            [scans, optimizedPoses] = scansAndPoses(slamAlg);
-
-            map_rebuild_counter = map_rebuild_counter + 1;
-            if map_rebuild_counter >= map_rebuild_interval
-                map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
-                map_rebuild_counter = 0;
-            end
-
-            slam_anchor_pos   = optimizedPoses(end,1:2);
-            slam_anchor_angle = optimizedPoses(end,3);
-            position = slam_anchor_pos;
-            angle    = slam_anchor_angle;
-            odom_anchor_pos   = curr_odom_pos;
-            odom_anchor_angle = curr_odom_angle;
-        end
+    %% Pure dead-reckoning during driving. Position/angle are updated by the
+    % odom block above. We just track the trajectory for plotting; no
+    % scan-matching corrections happen inside MoveRobot.
+    dist_moved  = norm(position - last_scan_position);
+    angle_moved = abs(wrapToPi(angle - last_scan_angle));
+    if isempty(mcl_history.poses) || dist_moved > 0.05 || angle_moved > 0.1
+        mcl_history.scans{end+1}   = lidarScan;
+        mcl_history.poses(end+1,:) = [position, angle];
+        last_scan_position = position;
+        last_scan_angle    = angle;
+    end
+    if isempty(mcl_history.poses)
+        optimizedPoses = [position, angle];
     else
-        % MCL mode: pure dead-reckoning during driving. Position/angle are
-        % updated by the odom block above. We just track the trajectory for
-        % plotting; no scan-matching corrections happen inside MoveRobot.
-        dist_moved  = norm(position - last_scan_position);
-        angle_moved = abs(wrapToPi(angle - last_scan_angle));
-        if isempty(mcl_history.poses) || dist_moved > 0.05 || angle_moved > 0.1
-            mcl_history.scans{end+1}   = lidarScan;
-            mcl_history.poses(end+1,:) = [position, angle];
-            last_scan_position = position;
-            last_scan_angle    = angle;
-        end
-        if isempty(mcl_history.poses)
-            optimizedPoses = [position, angle];
-        else
-            optimizedPoses = [base_poses; mcl_history.poses];
-        end
+        optimizedPoses = [base_poses; mcl_history.poses];
     end
 
     dt = toc(time_previous);

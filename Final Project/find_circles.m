@@ -1,43 +1,19 @@
-function [circle_state, final_pose] = find_circles(scanSub, cmdPub, slamAlg, current_pose, circle_state, odomSub)
+function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_state, odomSub)
     arguments
-        scanSub
         cmdPub
-        slamAlg
-        current_pose = []
+        current_pose
         circle_state = struct('orange', false, 'blue', false)
         odomSub = []
     end
 
     % Skip immediately if both colors already found.
     if circle_state.orange && circle_state.blue
-        if isempty(current_pose)
-            final_pose = [0, 0, 0];
-        else
-            final_pose = current_pose;
-        end
+        final_pose = current_pose;
         return;
     end
 
-    scan = receive(scanSub);
-    try
-    lidarScan = rosReadLidarScan(scan);
-    if isempty(current_pose)
-        addScan(slamAlg, lidarScan);
-    end
-    catch
-    end
-
-    maxLidarRange = 8;
-    mapResolution = 20;
-
-    if isempty(current_pose)
-        [scans, optimizedPoses] = scansAndPoses(slamAlg);
-        position = optimizedPoses(end,1:2);
-        angle    = optimizedPoses(end,3);
-    else
-        position = current_pose(1:2);
-        angle    = current_pose(3);
-    end
+    position = current_pose(1:2);
+    angle    = current_pose(3);
 
     % Record odom anchor so we can dead-reckon back to a map-frame pose at exit.
     odom_anchor_pos   = [];
