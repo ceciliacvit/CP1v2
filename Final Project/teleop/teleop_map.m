@@ -1,7 +1,5 @@
 function slamAlg = teleop_map(scanSub, odomSub, imuSub, slamAlg)
 % Passive SLAM map builder driven by an external teleop node.
-% Uses IMU yaw for heading and /odom for translation, falling back to
-% /odom yaw if no IMU is available. Pass a slamAlg to resume a run.
 arguments
     scanSub
     odomSub
@@ -108,7 +106,7 @@ disp('teleop_map started - drive from teleop_keyboard, press Q to save')
             first_scan = false;
             scans_since_rebuild = scans_since_rebuild + 1;
 
-            % rebuilding is O(graph size) and blocks key callbacks
+            % rebuild is slow; throttle it
             if scans_since_rebuild >= map_rebuild_interval
                 [scans, optimizedPoses] = scansAndPoses(slamAlg);
                 map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);

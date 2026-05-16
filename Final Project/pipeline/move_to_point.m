@@ -33,29 +33,29 @@ function [current_pose, odom_trajectory, circle_state] = move_to_point(scanSub, 
         [fail, current_pose, odom_trajectory, circle_scan] = MoveRobot( ...
             path, slamAlg, scanSub, odomSub, cmdPub, fig, 0.8, 0.20, ...
             current_pose, odom_trajectory, max_leg_distance);
-            
+
         refresh_plot(fig, map, current_pose, odom_trajectory, base_poses);
 
         if fail
             disp('fail: relocalizing');
             current_pose = localize_robot(map, scanSub, odomSub, cmdPub, current_pose);
-            continue; 
+            continue;
         end
 
         if circle_scan
             pre_scan_pose = current_pose;
             [circle_state, current_pose] = find_circles(cmdPub, current_pose, odomSub, circle_state);
-            
+
             if norm(current_pose(1:2) - pre_scan_pose(1:2)) > 0.05 && ~isempty(path)
                 [current_pose, odom_trajectory] = backtrack_to_path( ...
                     current_pose, path, map, slamAlg, scanSub, odomSub, cmdPub, fig, odom_trajectory, base_poses);
             end
-            continue; 
+            continue;
         end
 
         break;
     end
-    
+
     close(fig);
 end
 
@@ -71,7 +71,7 @@ end
 function [current_pose, odom_trajectory] = backtrack_to_path(current_pose, path, map, slamAlg, scanSub, odomSub, cmdPub, fig, odom_trajectory, base_poses)
     [~, idx] = min(vecnorm(path - current_pose(1:2), 2, 2));
     back_path = createPath(current_pose(1:2), path(idx, :), map);
-    
+
     if ~isempty(back_path)
         [~, current_pose, odom_trajectory] = MoveRobot( ...
             back_path, slamAlg, scanSub, odomSub, cmdPub, fig, ...

@@ -34,6 +34,7 @@ end
     end
 
     current_img = img;
+    circle.image = current_img;
 
     cols = size(current_img, 2);
     hsv = rgb2hsv(current_img);

@@ -38,7 +38,7 @@ try
     [final_pose_B1, odom_trajectory, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(1,:),slamAlg,initialPose,odom_trajectory,circle_state,false);
 
-    % A->B1 was dead-reckoned, so relocalize and re-approach B1 before scanning
+    % relocalize, then re-approach B1 before the scan leg
     final_pose_B1 = localize_robot(map, scanSub, odomSub, cmdPub, final_pose_B1);
     [final_pose_B1, odom_trajectory, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(1,:),slamAlg,final_pose_B1,odom_trajectory,circle_state,false);
@@ -47,18 +47,14 @@ try
     [final_pose_B2, odom_trajectory, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(2,:),slamAlg,final_pose_B1,odom_trajectory,circle_state,true);
 
-    % B1->B2 was dead-reckoned (longest leg, plus scan/backtrack detours), so
-    % relocalize before the final B2->C leg
+    % relocalize before B2->C
     final_pose_B2 = localize_robot(map, scanSub, odomSub, cmdPub, final_pose_B2);
 
     % B2 -> C
     [~, odom_trajectory, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(3,:),slamAlg,final_pose_B2,odom_trajectory,circle_state,false);
 catch ME
-    cmdMsg = ros2message('geometry_msgs/Twist');
-    cmdMsg.linear.x = 0;
-    cmdMsg.angular.z = 0;
-    send(cmdPub, cmdMsg);
+    stop_robot(cmdPub);
     clear scanSub
     rethrow(ME)
 end
