@@ -1,9 +1,9 @@
-function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_state, odomSub)
+function [circle_state, final_pose] = find_circles(cmdPub, current_pose, odomSub, circle_state)
     arguments
         cmdPub
         current_pose
+        odomSub
         circle_state = struct('orange', false, 'blue', false)
-        odomSub = []
     end
 
     if circle_state.orange && circle_state.blue
@@ -24,7 +24,7 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
     send(cmdPub, cmdMsg)
 
     detect_window = 3;
-    Detects = false(1, detect_window);
+    detects = false(1, detect_window);
     detect_idx = 0;
 
     last_yaw = odom_anchor(3);
@@ -33,7 +33,7 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
     while ~(circle_state.blue && circle_state.orange) && total_rotation < 2*pi
         circle = detectCircle(0.8, circle_state.orange, circle_state.blue);
         detect_idx = mod(detect_idx, detect_window) + 1;
-        Detects(detect_idx) = circle.found;
+        detects(detect_idx) = circle.found;
 
         % slow down on first sight, speed back up when lost
         if circle.found
@@ -48,7 +48,7 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
         total_rotation = total_rotation + abs(wrapToPi(curr_odom(3) - last_yaw));
         last_yaw = curr_odom(3);
 
-        if sum(Detects) < detect_window || circle.color == "" || ...
+        if sum(detects) < detect_window || circle.color == "" || ...
            (circle.color == "orange" && circle_state.orange) || ...
            (circle.color == "blue"   && circle_state.blue)
             continue;
@@ -97,7 +97,7 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
             disp("Failed to reach circle, resuming search.");
         end
         
-        Detects = false(1, detect_window);
+        detects = false(1, detect_window);
 
         % allow another full turn from the new vantage
         cmdMsg.angular.z = -run_speed;
@@ -120,12 +120,4 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
     final_pose = [current_pose(1) + cos(theta_diff)*d_odom(1) - sin(theta_diff)*d_odom(2), ...
                   current_pose(2) + sin(theta_diff)*d_odom(1) + cos(theta_diff)*d_odom(2), ...
                   current_pose(3) + wrapToPi(curr_odom(3) - odom_anchor(3))];
-end
-
-
-function odom = read_odom(odomSub)
-    msg = odomSub.LatestMessage;
-    eul = quat2eul([msg.pose.pose.orientation.w, msg.pose.pose.orientation.x, ...
-                    msg.pose.pose.orientation.y, msg.pose.pose.orientation.z]);
-    odom = [msg.pose.pose.position.x, msg.pose.pose.position.y, eul(1)];
 end

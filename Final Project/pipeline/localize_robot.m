@@ -106,11 +106,3 @@ end
 
 close(fig);
 end
-
-
-function odom = read_odom(odomSub)
-    msg = odomSub.LatestMessage;
-    eul = quat2eul([msg.pose.pose.orientation.w, msg.pose.pose.orientation.x, ...
-                    msg.pose.pose.orientation.y, msg.pose.pose.orientation.z]);
-    odom = [msg.pose.pose.position.x, msg.pose.pose.position.y, eul(1)];
-end

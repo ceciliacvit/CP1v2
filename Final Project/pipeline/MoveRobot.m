@@ -1,4 +1,4 @@
-function [updated_slam, fail, final_pose, odom_trajectory, circle_scan_needed] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,percentage_threshold,tolerance,current_pose,odom_trajectory,max_distance)
+function [fail, final_pose, odom_trajectory, circle_scan_needed] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figureHandle,path_fraction,tolerance,current_pose,odom_trajectory,max_distance)
 % Drive along path with pure pursuit + VFH, dead-reckoning the pose from odom.
     arguments
         path;
@@ -6,8 +6,8 @@ function [updated_slam, fail, final_pose, odom_trajectory, circle_scan_needed] =
         scanSub;
         odomSub;
         cmdPub;
-        figure1 = 0;
-        percentage_threshold = 1;
+        figureHandle = 0;
+        path_fraction = 1;
         tolerance = 0.20;
         current_pose = [];
         odom_trajectory = struct('scans', {{}}, 'poses', zeros(0,3));
@@ -20,20 +20,18 @@ function [updated_slam, fail, final_pose, odom_trajectory, circle_scan_needed] =
         odom_trajectory = struct('scans', {{}}, 'poses', zeros(0,3));
     end
 
-maxLidarRange = 8;
-mapResolution = 20;
+[mapResolution, maxLidarRange] = map_params();
 
 time_previous = tic;
 fail = false;
 final_pose = current_pose;
 
 if isempty(path)
-    updated_slam = slamAlg;
     fail = true;
     return
 end
 total_waypoints = size(path, 1);
-max_index = round(total_waypoints * percentage_threshold);
+max_index = round(total_waypoints * path_fraction);
 goal = path(max_index, :);
 
 controller = controllerPurePursuit;
@@ -63,9 +61,9 @@ map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 position = current_pose(1:2);
 angle = current_pose(3);
 if isempty(odom_trajectory.poses)
-    optimizedPoses = current_pose;
+    trajectory_poses = current_pose;
 else
-    optimizedPoses = [base_poses; odom_trajectory.poses];
+    trajectory_poses = [base_poses; odom_trajectory.poses];
 end
 
 last_scan_position = position;
@@ -76,10 +74,9 @@ odom_anchor_pos   = [0, 0];
 odom_anchor_angle = 0;
 odom_msg = odomSub.LatestMessage;
 if ~isempty(odom_msg)
-    odom_anchor_pos   = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
-    eul = quat2eul([odom_msg.pose.pose.orientation.w, odom_msg.pose.pose.orientation.x, ...
-                    odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
-    odom_anchor_angle = eul(1);
+    anchor = read_odom(odomSub);
+    odom_anchor_pos   = anchor(1:2);
+    odom_anchor_angle = anchor(3);
 end
 start_anchor_pos   = position;
 start_anchor_angle = angle;
@@ -105,10 +102,9 @@ while drive
     curr_odom_angle = odom_anchor_angle;
     odom_msg = odomSub.LatestMessage;
     if ~isempty(odom_msg)
-        curr_odom_pos   = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
-        eul = quat2eul([odom_msg.pose.pose.orientation.w, odom_msg.pose.pose.orientation.x, ...
-                        odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
-        curr_odom_angle = eul(1);
+        curr_odom       = read_odom(odomSub);
+        curr_odom_pos   = curr_odom(1:2);
+        curr_odom_angle = curr_odom(3);
         d_odom = curr_odom_pos - odom_anchor_pos;
         theta_diff = start_anchor_angle - odom_anchor_angle;
         c = cos(theta_diff); s = sin(theta_diff);
@@ -125,9 +121,9 @@ while drive
         last_scan_angle    = angle;
     end
     if isempty(odom_trajectory.poses)
-        optimizedPoses = [position, angle];
+        trajectory_poses = [position, angle];
     else
-        optimizedPoses = [base_poses; odom_trajectory.poses];
+        trajectory_poses = [base_poses; odom_trajectory.poses];
     end
 
     dt = toc(time_previous);
@@ -143,7 +139,6 @@ while drive
         time_not_moving = time_not_moving + dt;
         if time_not_moving > patience
             stop_robot(cmdPub);
-            updated_slam = slamAlg;
             time_not_moving = 0;
             fail = true;
             final_pose = [position, angle];
@@ -165,7 +160,6 @@ while drive
 
     if cum_dist >= max_distance
         stop_robot(cmdPub);
-        updated_slam = slamAlg;
         fail = false;
         circle_scan_needed = true;
         final_pose = [position, angle];
@@ -177,8 +171,8 @@ while drive
         break;
     end
 
-    if(figure1 ~= 0)
-        plot_all(figure1, map, optimizedPoses, path(1:max_index,:));
+    if(figureHandle ~= 0)
+        plot_all(figureHandle, map, trajectory_poses, path(1:max_index,:));
     end
 
     currentPose = [position, angle];
@@ -204,7 +198,6 @@ while drive
 end
 
 stop_robot(cmdPub);
-updated_slam = slamAlg;
 final_pose = [position, angle];
 end
 

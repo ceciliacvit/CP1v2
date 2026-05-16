@@ -10,8 +10,7 @@ arguments
 end
 disp('teleop_map started - drive from teleop_keyboard, press Q to save')
 
-    maxLidarRange = 8;
-    mapResolution = 25;
+    [mapResolution, maxLidarRange] = map_params();
     if isempty(slamAlg)
         slamAlg = lidarSLAM(mapResolution, maxLidarRange);
     else
@@ -26,7 +25,7 @@ disp('teleop_map started - drive from teleop_keyboard, press Q to save')
 
     quit_flag = false;
 
-    figure1 = figure('Name','Map Viewer (press Q to save and exit)', ...
+    figureHandle = figure('Name','Map Viewer (press Q to save and exit)', ...
                      'NumberTitle','off', ...
                      'KeyPressFcn',@onKey);
 
@@ -57,7 +56,7 @@ disp('teleop_map started - drive from teleop_keyboard, press Q to save')
     map_rebuild_interval = 2;
     scans_since_rebuild = 0;
 
-    while ~quit_flag && isvalid(figure1)
+    while ~quit_flag && isvalid(figureHandle)
 
         try
             scan = receive(scanSub, 1.0);
@@ -113,8 +112,8 @@ disp('teleop_map started - drive from teleop_keyboard, press Q to save')
             if scans_since_rebuild >= map_rebuild_interval
                 [scans, optimizedPoses] = scansAndPoses(slamAlg);
                 map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);
-                if ~isempty(map) && isvalid(figure1)
-                    plot_all(figure1, map, optimizedPoses);
+                if ~isempty(map) && isvalid(figureHandle)
+                    plot_all(figureHandle, map, optimizedPoses);
                 end
                 scans_since_rebuild = 0;
             end
@@ -145,9 +144,4 @@ disp('teleop_map started - drive from teleop_keyboard, press Q to save')
             quit_flag = true;
         end
     end
-end
-
-function yaw = quat_to_yaw(q)
-    eul = quat2eul([q.w, q.x, q.y, q.z]);
-    yaw = eul(1);
 end

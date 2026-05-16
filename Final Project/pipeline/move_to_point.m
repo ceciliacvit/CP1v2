@@ -12,8 +12,9 @@ function [current_pose, odom_trajectory, circle_state] = move_to_point(scanSub, 
     end
 
     fig = figure('Name', 'Navigation');
+    [mapResolution, maxLidarRange] = map_params();
     [base_scans, base_poses] = scansAndPoses(slamAlg);
-    map = buildMap(base_scans, base_poses, 20, 8);
+    map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
     current_pose = initialPose;
 
     while true
@@ -24,14 +25,14 @@ function [current_pose, odom_trajectory, circle_state] = move_to_point(scanSub, 
         end
 
         if scan_enabled && ~(circle_state.orange && circle_state.blue)
-            chunk = 0.75;
+            max_leg_distance = 0.75;
         else
-            chunk = Inf;
+            max_leg_distance = Inf;
         end
 
-        [slamAlg, fail, current_pose, odom_trajectory, circle_scan] = MoveRobot( ...
+        [fail, current_pose, odom_trajectory, circle_scan] = MoveRobot( ...
             path, slamAlg, scanSub, odomSub, cmdPub, fig, 0.8, 0.20, ...
-            current_pose, odom_trajectory, chunk);
+            current_pose, odom_trajectory, max_leg_distance);
             
         refresh_plot(fig, map, current_pose, odom_trajectory, base_poses);
 
@@ -43,7 +44,7 @@ function [current_pose, odom_trajectory, circle_state] = move_to_point(scanSub, 
 
         if circle_scan
             pre_scan_pose = current_pose;
-            [circle_state, current_pose] = find_circles(cmdPub, current_pose, circle_state, odomSub);
+            [circle_state, current_pose] = find_circles(cmdPub, current_pose, odomSub, circle_state);
             
             if norm(current_pose(1:2) - pre_scan_pose(1:2)) > 0.05 && ~isempty(path)
                 [current_pose, odom_trajectory] = backtrack_to_path( ...
@@ -72,7 +73,7 @@ function [current_pose, odom_trajectory] = backtrack_to_path(current_pose, path,
     back_path = createPath(current_pose(1:2), path(idx, :), map);
     
     if ~isempty(back_path)
-        [~, ~, current_pose, odom_trajectory] = MoveRobot( ...
+        [~, current_pose, odom_trajectory] = MoveRobot( ...
             back_path, slamAlg, scanSub, odomSub, cmdPub, fig, ...
             1.0, 0.20, current_pose, odom_trajectory);
         refresh_plot(fig, map, current_pose, odom_trajectory, base_poses);

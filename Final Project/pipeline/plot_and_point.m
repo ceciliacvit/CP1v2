@@ -1,6 +1,5 @@
 function points = plot_and_point(slamAlg)
-    maxLidarRange = 8;
-    mapResolution = 20;
+    [mapResolution, maxLidarRange] = map_params();
 
     [scans, optimizedPoses]  = scansAndPoses(slamAlg);
     map = buildMap(scans, optimizedPoses, mapResolution, maxLidarRange);

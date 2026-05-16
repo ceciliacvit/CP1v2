@@ -47,6 +47,10 @@ try
     [final_pose_B2, odom_trajectory, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(2,:),slamAlg,final_pose_B1,odom_trajectory,circle_state,true);
 
+    % B1->B2 was dead-reckoned (longest leg, plus scan/backtrack detours), so
+    % relocalize before the final B2->C leg
+    final_pose_B2 = localize_robot(map, scanSub, odomSub, cmdPub, final_pose_B2);
+
     % B2 -> C
     [~, odom_trajectory, circle_state] = move_to_point( ...
         scanSub,odomSub,cmdPub,points(3,:),slamAlg,final_pose_B2,odom_trajectory,circle_state,false);

@@ -1,13 +1,13 @@
-function plot_all(figure1, map, poses, path, lookahead_point, target)
+function plot_all(figureHandle, map, poses, path, lookahead_point, target)
 arguments
-    figure1
+    figureHandle
     map
     poses
     path = [0,0]
     lookahead_point = []
     target = [0,0]
 end
-figure(figure1);
+figure(figureHandle);
 show(map);
 hold on;
 position = poses(end,1:2);
