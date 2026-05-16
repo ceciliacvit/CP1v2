@@ -136,9 +136,10 @@ while drive
         dt = 0.01;
     end
 
+    % stuck detection
     position_diff = norm(position - prev_position);
     angle_diff = wrapToPi(prev_heading - angle);
-    if position_diff < 0.02 && abs(angle_diff) < 0.05
+    if (position_diff / dt) < 0.02 && (abs(angle_diff) / dt) < 0.05
         time_not_moving = time_not_moving + dt;
         if time_not_moving > patience
             stop_robot(cmdPub);
@@ -169,14 +170,6 @@ while drive
         circle_scan_needed = true;
         final_pose = [position, angle];
         return;
-    end
-
-    if (~validate_path([position; path(1:max_index,:)], map))
-        stop_robot(cmdPub);
-        updated_slam = slamAlg;
-        fail = true;
-        final_pose = [position, angle];
-        return
     end
 
     if norm(position - goal) < tolerance
