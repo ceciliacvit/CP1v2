@@ -11,21 +11,8 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
         return;
     end
 
-    position = current_pose(1:2);
-    angle    = current_pose(3);
-
     % anchor odom so we can dead-reckon back to a map-frame pose on exit
-    odom_anchor_pos   = [];
-    odom_anchor_angle = 0;
-    if ~isempty(odomSub)
-        odom_msg = odomSub.LatestMessage;
-        if ~isempty(odom_msg)
-            odom_anchor_pos = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
-            eul = quat2eul([odom_msg.pose.pose.orientation.w, odom_msg.pose.pose.orientation.x, ...
-                            odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
-            odom_anchor_angle = eul(1);
-        end
-    end
+    odom_anchor = read_odom(odomSub);
 
     run_speed  = 0.3;
     scan_speed = 0.05;
@@ -36,53 +23,34 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
     pause(1.0)
     send(cmdPub, cmdMsg)
 
-    % lock a color only when the whole window agrees, to reject false positives
     detect_window = 3;
     Detects = false(1, detect_window);
     detect_idx = 0;
-    orange_circle_found = circle_state.orange;
-    blue_circle_found   = circle_state.blue;
-    slowing = false;
 
-    % stop after roughly one full turn so the caller can move on
-    last_yaw = read_yaw(odomSub);
+    last_yaw = odom_anchor(3);
     total_rotation = 0;
-    full_rotation  = 2*pi;
 
-    while ~(blue_circle_found && orange_circle_found) && total_rotation < full_rotation
-        circle = detectCircle(0.8, orange_circle_found, blue_circle_found);
+    while ~(circle_state.blue && circle_state.orange) && total_rotation < 2*pi
+        circle = detectCircle(0.8, circle_state.orange, circle_state.blue);
         detect_idx = mod(detect_idx, detect_window) + 1;
         Detects(detect_idx) = circle.found;
-        recent_sum = sum(Detects);
 
         % slow down on first sight, speed back up when lost
-        if circle.found && ~slowing
-            slowing = true;
-        elseif ~circle.found && slowing
-            slowing = false;
-        end
-        if slowing
+        if circle.found
             cmdMsg.angular.z = -scan_speed;
         else
             cmdMsg.angular.z = -run_speed;
         end
         cmdMsg.linear.x = 0;
-        send(cmdPub, cmdMsg);  % republish so the cmd_vel watchdog keeps the motors alive
+        send(cmdPub, cmdMsg);  
 
-        curr_yaw = read_yaw(odomSub);
-        if ~isnan(curr_yaw) && ~isnan(last_yaw)
-            total_rotation = total_rotation + abs(wrapToPi(curr_yaw - last_yaw));
-        end
-        last_yaw = curr_yaw;
+        curr_odom = read_odom(odomSub);
+        total_rotation = total_rotation + abs(wrapToPi(curr_odom(3) - last_yaw));
+        last_yaw = curr_odom(3);
 
-        if recent_sum < detect_window
-            continue;
-        end
-        if circle.color == ""
-            continue;
-        end
-        if (circle.color == "orange" && orange_circle_found) || ...
-           (circle.color == "blue"   && blue_circle_found)
+        if sum(Detects) < detect_window || circle.color == "" || ...
+           (circle.color == "orange" && circle_state.orange) || ...
+           (circle.color == "blue"   && circle_state.blue)
             continue;
         end
 
@@ -92,20 +60,12 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
         pause(0.4);
 
         target_color = circle.color;
-
-        % approach until 0.9-1.1 m away
         approach_timer = tic;
         success = false;
-        while true
-            if toc(approach_timer) > 20
-                disp("Approach timed out.");
-                cmdMsg.linear.x = 0;
-                cmdMsg.angular.z = 0;
-                send(cmdPub, cmdMsg);
-                break;
-            end
 
-            circle = detectCircle(0.8, orange_circle_found, blue_circle_found);
+        % approach until 0.9-1.1 m away
+        while toc(approach_timer) <= 20
+            circle = detectCircle(0.8, circle_state.orange, circle_state.blue);
             if ~circle.found
                 cmdMsg.linear.x = 0;
                 cmdMsg.angular.z = 0;
@@ -130,26 +90,21 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
         end
 
         if success
-            if target_color == "orange"
-                orange_circle_found = true;
-                disp("orange found");
-            elseif target_color == "blue"
-                blue_circle_found = true;
-                disp("blue found");
-            end
+            circle_state.(target_color) = true;
+            disp(target_color + " found");
             captureImage();
         else
             disp("Failed to reach circle, resuming search.");
         end
+        
         Detects = false(1, detect_window);
-        detect_idx = 0;
-        slowing = false;
 
         % allow another full turn from the new vantage
         cmdMsg.angular.z = -run_speed;
         cmdMsg.linear.x  = 0;
         send(cmdPub, cmdMsg);
-        last_yaw = read_yaw(odomSub);
+        last_odom = read_odom(odomSub);
+        last_yaw = last_odom(3);
         total_rotation = 0;
     end
 
@@ -157,40 +112,20 @@ function [circle_state, final_pose] = find_circles(cmdPub, current_pose, circle_
     cmdMsg.linear.x  = 0;
     send(cmdPub, cmdMsg)
 
-    circle_state.orange = orange_circle_found;
-    circle_state.blue   = blue_circle_found;
-
     % integrate the odom delta to report the exit pose in the map frame
-    final_pose = [position, angle];
-    if ~isempty(odomSub) && ~isempty(odom_anchor_pos)
-        odom_msg = odomSub.LatestMessage;
-        if ~isempty(odom_msg)
-            curr_odom_pos = [odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y];
-            eul = quat2eul([odom_msg.pose.pose.orientation.w, odom_msg.pose.pose.orientation.x, ...
-                            odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
-            curr_odom_angle = eul(1);
-            d_odom = curr_odom_pos - odom_anchor_pos;
-            theta_diff = angle - odom_anchor_angle;
-            c = cos(theta_diff); s = sin(theta_diff);
-            new_xy = [position(1) + c*d_odom(1) - s*d_odom(2), ...
-                      position(2) + s*d_odom(1) + c*d_odom(2)];
-            final_pose = [new_xy, angle + wrapToPi(curr_odom_angle - odom_anchor_angle)];
-        end
-    end
-
+    curr_odom = read_odom(odomSub);
+    d_odom = curr_odom(1:2) - odom_anchor(1:2);
+    theta_diff = current_pose(3) - odom_anchor(3);
+    
+    final_pose = [current_pose(1) + cos(theta_diff)*d_odom(1) - sin(theta_diff)*d_odom(2), ...
+                  current_pose(2) + sin(theta_diff)*d_odom(1) + cos(theta_diff)*d_odom(2), ...
+                  current_pose(3) + wrapToPi(curr_odom(3) - odom_anchor(3))];
 end
 
 
-function yaw = read_yaw(odomSub)
-    yaw = NaN;
-    if isempty(odomSub)
-        return;
-    end
-    odom_msg = odomSub.LatestMessage;
-    if isempty(odom_msg)
-        return;
-    end
-    eul = quat2eul([odom_msg.pose.pose.orientation.w, odom_msg.pose.pose.orientation.x, ...
-                    odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z]);
-    yaw = eul(1);
+function odom = read_odom(odomSub)
+    msg = odomSub.LatestMessage;
+    eul = quat2eul([msg.pose.pose.orientation.w, msg.pose.pose.orientation.x, ...
+                    msg.pose.pose.orientation.y, msg.pose.pose.orientation.z]);
+    odom = [msg.pose.pose.position.x, msg.pose.pose.position.y, eul(1)];
 end
