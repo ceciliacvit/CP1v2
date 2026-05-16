@@ -1,4 +1,4 @@
-function [updated_slam, fail, final_pose, mcl_history, circle_scan_needed] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,percentage_threshold,tolerance,current_pose,mcl_history,max_distance)
+function [updated_slam, fail, final_pose, odom_trajectory, circle_scan_needed] = MoveRobot(path,slamAlg,scanSub,odomSub,cmdPub,figure1,percentage_threshold,tolerance,current_pose,odom_trajectory,max_distance)
 % Drive along path with pure pursuit + VFH, dead-reckoning the pose from odom.
     arguments
         path;
@@ -10,14 +10,14 @@ function [updated_slam, fail, final_pose, mcl_history, circle_scan_needed] = Mov
         percentage_threshold = 1;
         tolerance = 0.20;
         current_pose = [];
-        mcl_history = struct('scans', {{}}, 'poses', zeros(0,3));
+        odom_trajectory = struct('scans', {{}}, 'poses', zeros(0,3));
         max_distance = Inf;
     end
 
     circle_scan_needed = false;
 
-    if ~isstruct(mcl_history) || ~isfield(mcl_history,'scans') || ~isfield(mcl_history,'poses')
-        mcl_history = struct('scans', {{}}, 'poses', zeros(0,3));
+    if ~isstruct(odom_trajectory) || ~isfield(odom_trajectory,'scans') || ~isfield(odom_trajectory,'poses')
+        odom_trajectory = struct('scans', {{}}, 'poses', zeros(0,3));
     end
 
 maxLidarRange = 8;
@@ -62,10 +62,10 @@ map = buildMap(base_scans, base_poses, mapResolution, maxLidarRange);
 
 position = current_pose(1:2);
 angle = current_pose(3);
-if isempty(mcl_history.poses)
+if isempty(odom_trajectory.poses)
     optimizedPoses = current_pose;
 else
-    optimizedPoses = [base_poses; mcl_history.poses];
+    optimizedPoses = [base_poses; odom_trajectory.poses];
 end
 
 last_scan_position = position;
@@ -118,16 +118,16 @@ while drive
 
     dist_moved  = norm(position - last_scan_position);
     angle_moved = abs(wrapToPi(angle - last_scan_angle));
-    if isempty(mcl_history.poses) || dist_moved > 0.05 || angle_moved > 0.1
-        mcl_history.scans{end+1}   = lidarScan;
-        mcl_history.poses(end+1,:) = [position, angle];
+    if isempty(odom_trajectory.poses) || dist_moved > 0.05 || angle_moved > 0.1
+        odom_trajectory.scans{end+1}   = lidarScan;
+        odom_trajectory.poses(end+1,:) = [position, angle];
         last_scan_position = position;
         last_scan_angle    = angle;
     end
-    if isempty(mcl_history.poses)
+    if isempty(odom_trajectory.poses)
         optimizedPoses = [position, angle];
     else
-        optimizedPoses = [base_poses; mcl_history.poses];
+        optimizedPoses = [base_poses; odom_trajectory.poses];
     end
 
     dt = toc(time_previous);

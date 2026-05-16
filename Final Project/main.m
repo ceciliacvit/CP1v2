@@ -31,25 +31,25 @@ try
     points = plot_and_point(slamAlg);
 
     % trajectory and circle state persist across legs
-    mcl_history = struct('scans', {{}}, 'poses', zeros(0,3));
+    odom_trajectory = struct('scans', {{}}, 'poses', zeros(0,3));
     circle_state = struct('orange', false, 'blue', false);
 
     % A -> B1
-    [final_pose_B1, mcl_history, circle_state] = move_to_point( ...
-        scanSub,odomSub,cmdPub,points(1,:),slamAlg,initialPose,mcl_history,circle_state,false);
+    [final_pose_B1, odom_trajectory, circle_state] = move_to_point( ...
+        scanSub,odomSub,cmdPub,points(1,:),slamAlg,initialPose,odom_trajectory,circle_state,false);
 
     % A->B1 was dead-reckoned, so relocalize and re-approach B1 before scanning
     final_pose_B1 = localize_robot(map, scanSub, odomSub, cmdPub, final_pose_B1);
-    [final_pose_B1, mcl_history, circle_state] = move_to_point( ...
-        scanSub,odomSub,cmdPub,points(1,:),slamAlg,final_pose_B1,mcl_history,circle_state,false);
+    [final_pose_B1, odom_trajectory, circle_state] = move_to_point( ...
+        scanSub,odomSub,cmdPub,points(1,:),slamAlg,final_pose_B1,odom_trajectory,circle_state,false);
 
     % B1 -> B2, scanning for circles on this leg
-    [final_pose_B2, mcl_history, circle_state] = move_to_point( ...
-        scanSub,odomSub,cmdPub,points(2,:),slamAlg,final_pose_B1,mcl_history,circle_state,true);
+    [final_pose_B2, odom_trajectory, circle_state] = move_to_point( ...
+        scanSub,odomSub,cmdPub,points(2,:),slamAlg,final_pose_B1,odom_trajectory,circle_state,true);
 
     % B2 -> C
-    [~, mcl_history, circle_state] = move_to_point( ...
-        scanSub,odomSub,cmdPub,points(3,:),slamAlg,final_pose_B2,mcl_history,circle_state,false);
+    [~, odom_trajectory, circle_state] = move_to_point( ...
+        scanSub,odomSub,cmdPub,points(3,:),slamAlg,final_pose_B2,odom_trajectory,circle_state,false);
 catch ME
     cmdMsg = ros2message('geometry_msgs/Twist');
     cmdMsg.linear.x = 0;
