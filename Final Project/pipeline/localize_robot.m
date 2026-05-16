@@ -44,76 +44,46 @@ mcl.MotionModel.Noise        = [0.1 0.1 0.05 0.05];
 
 converge_threshold = 0.03;
 
-odom_msg = odomSub.LatestMessage;
-while isempty(odom_msg)
-    pause(0.05);
-    odom_msg = odomSub.LatestMessage;
-end
-
 % seed MCL with one scan before moving so it starts aligned
 scan = receive(scanSub);
-try
-    lidarScan = rosReadLidarScan(scan);
-    lidarScan = removeInvalidData(lidarScan, 'RangeLimits', [0.1, 8]);
-    step(mcl, odom_to_pose(odom_msg), lidarScan);
-catch
-end
+lidarScan = rosReadLidarScan(scan);
+lidarScan = removeInvalidData(lidarScan, 'RangeLimits', [0.1, 8]);
+step(mcl, read_odom(odomSub), lidarScan);
 
 cmdMsg = ros2message('geometry_msgs/Twist');
 
 fig = figure('Name', 'MCL Localization');
 ax  = axes(fig);
-show(map, 'Parent', ax);
-title(ax, 'Localizing...');
-drawnow;
 
 t_start = tic;
 
 while true
-    % keep moving in a small sine while turning so the robot doesn't time out
+    % keep moving in a small sine to get more information about location
     t = toc(t_start);
     cmdMsg.linear.x = 0.05 * sin(t);
     cmdMsg.angular.z = 0.3;
     send(cmdPub, cmdMsg);
 
     scan = receive(scanSub);
-    try
-        lidarScan = rosReadLidarScan(scan);
-        lidarScan = removeInvalidData(lidarScan, 'RangeLimits', [0.1, 8]);
-    catch
-        continue;
-    end
+    lidarScan = rosReadLidarScan(scan);
+    lidarScan = removeInvalidData(lidarScan, 'RangeLimits', [0.1, 8]);
 
-    odom_msg = odomSub.LatestMessage;
-    if isempty(odom_msg)
-        continue;
-    end
-    curr_odom_pose = odom_to_pose(odom_msg);
+    curr_odom_pose = read_odom(odomSub);
 
     [isUpdated, estimatedPose, covariance] = step(mcl, curr_odom_pose, lidarScan);
 
     if isUpdated
-        xy_std = sqrt(trace(covariance(1:2, 1:2)) / 2);
+        xy_std = sqrt(mean(diag(covariance(1:2, 1:2))));
 
-        cla(ax);
         show(map, 'Parent', ax);
         hold(ax, 'on');
-
-        plot(ax, estimatedPose(1), estimatedPose(2), ...
-             'g*', 'MarkerSize', 12, 'LineWidth', 2);
-        quiver(ax, estimatedPose(1), estimatedPose(2), ...
-               0.3*cos(estimatedPose(3)), 0.3*sin(estimatedPose(3)), ...
-               'g', 'LineWidth', 2, 'MaxHeadSize', 1);
-
+        plot(ax, estimatedPose(1), estimatedPose(2), 'g*', 'MarkerSize', 12, 'LineWidth', 2);
         hold(ax, 'off');
-        title(ax, sprintf('Localizing - std = %.3f m  (converges at %.3f m)', ...
-              xy_std, converge_threshold));
+
+        title(ax, sprintf('std = %.3f m', xy_std));
         drawnow limitrate;
 
         if xy_std < converge_threshold
-            title(ax, 'Stopping to finalize pose...');
-            drawnow;
-
             cmdMsg.linear.x = 0;
             cmdMsg.angular.z = 0;
             send(cmdPub, cmdMsg);
@@ -122,24 +92,13 @@ while true
             % a few more scans once stopped for a clean motionless pose
             for i = 1:10
                 scan = receive(scanSub);
-                odom_msg = odomSub.LatestMessage;
-                if isempty(odom_msg)
-                    continue;
-                end
-                curr_odom_pose = odom_to_pose(odom_msg);
-                try
-                    lidarScan = rosReadLidarScan(scan);
-                    lidarScan = removeInvalidData(lidarScan, 'RangeLimits', [0.1, 8]);
-                    [~, estimatedPose, ~] = step(mcl, curr_odom_pose, lidarScan);
-                catch
-                end
+                curr_odom_pose = read_odom(odomSub);
+                lidarScan = rosReadLidarScan(scan);
+                lidarScan = removeInvalidData(lidarScan, 'RangeLimits', [0.1, 8]);
+                [~, estimatedPose, ~] = step(mcl, curr_odom_pose, lidarScan);
             end
 
             pose = estimatedPose;
-
-            title(ax, sprintf('Converged at [%.2f, %.2f, %.2f rad]', ...
-                  pose(1), pose(2), pose(3)));
-            drawnow;
             break;
         end
     end
@@ -149,12 +108,9 @@ close(fig);
 end
 
 
-function p = odom_to_pose(odom_msg)
-    x   = odom_msg.pose.pose.position.x;
-    y   = odom_msg.pose.pose.position.y;
-    eul = quat2eul([odom_msg.pose.pose.orientation.w, ...
-                    odom_msg.pose.pose.orientation.x, ...
-                    odom_msg.pose.pose.orientation.y, ...
-                    odom_msg.pose.pose.orientation.z]);
-    p = [x, y, eul(1)];
+function odom = read_odom(odomSub)
+    msg = odomSub.LatestMessage;
+    eul = quat2eul([msg.pose.pose.orientation.w, msg.pose.pose.orientation.x, ...
+                    msg.pose.pose.orientation.y, msg.pose.pose.orientation.z]);
+    odom = [msg.pose.pose.position.x, msg.pose.pose.position.y, eul(1)];
 end
