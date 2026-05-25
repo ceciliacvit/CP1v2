@@ -1,7 +1,7 @@
 function path = createPath(start, goal, map)
     % Try to generate a safe path keeping away from walls (inflated map)
     safeMap = copy(map);
-    inflate(safeMap, 0.1);
+    inflate(safeMap, 0.2);
     
     prm = mobileRobotPRM(safeMap, 1000);
     prm.ConnectionDistance = 5;
